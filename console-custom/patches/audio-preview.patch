@@ -1,0 +1,48 @@
+--- a/web-app/src/screens/Console/Buckets/ListBuckets/Objects/Preview/PreviewFileContent.tsx
++++ b/web-app/src/screens/Console/Buckets/ListBuckets/Objects/Preview/PreviewFileContent.tsx
+@@ -20,6 +20,7 @@
+ import { AllowedPreviews, previewObjectType } from "../utils";
+ import { api } from "../../../../../../api";
+ import PreviewPDF from "./PreviewPDF";
++import PreviewAudio from "./PreviewAudio";
+ import { downloadObject } from "../../../../ObjectBrowser/utils";
+ import { useAppDispatch } from "../../../../../../store";
+ import { BucketObject } from "../../../../../../api/consoleApi";
+@@ -147,19 +148,13 @@
+             </video>
+           )}
+           {objectType === "audio" && (
+-            <audio
+-              style={{
+-                width: "100%",
+-                height: "auto",
+-              }}
+-              autoPlay={true}
+-              controls={true}
+-              muted={false}
+-              playsInline={true}
+-              onPlay={iframeLoaded}
+-            >
+-              <source src={path} type="audio/mpeg" />
+-            </audio>
++            <PreviewAudio
++              key={path}
++              path={path}
++              size={actualInfo.size}
++              onLoad={iframeLoaded}
++              downloadFile={() => downloadObject(dispatch, bucketName, objectName, actualInfo)}
++            />
+           )}
+           {objectType === "image" && (
+             <img
+--- a/web-app/src/screens/Console/Buckets/ListBuckets/Objects/utils.ts
++++ b/web-app/src/screens/Console/Buckets/ListBuckets/Objects/utils.ts
+@@ -239,7 +239,7 @@
+     "heic",
+   ];
+   const pdfExtensions = ["pdf"];
+-  const audioExtensions = ["wav", "mp3", "alac", "aiff", "dsd", "pcm"];
++  const audioExtensions = ["wav", "wave", "mp3", "flac", "ogg", "oga", "opus", "m4a", "aac", "alac", "aiff", "dsd", "pcm"];
+   const videoExtensions = [
+     "mp4",
+     "avi",

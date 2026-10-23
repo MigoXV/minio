@@ -1,0 +1,10 @@
+{
+  "baseUrl": "http://<CURRENT_WIFI_GATEWAY>",
+  "username": "admin",
+  "password": "<ROUTER_MANAGEMENT_PASSWORD>",
+  "deviceId": "<VERIFIED_DEVICE_UUID>",
+  "reserveAddress": false,
+  "mappings": [
+    {"name": "example-service", "externalPort": 8443, "internalPort": 8443}
+  ]
+}

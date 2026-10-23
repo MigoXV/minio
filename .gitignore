@@ -53,3 +53,12 @@ s3-check-md5
 s3-verify
 xattr
 xl-meta
+
+# Local router/deployment configuration, binaries, data, and captured responses.
+/.local/
+/ops/huawei-router/.local/
+/ops/minio-lan/.local/
+/ops/minio-lan/*.local.*
+/ops/minio-lan/.env
+/ops/minio-lan/.env.*
+!/ops/minio-lan/.env.example

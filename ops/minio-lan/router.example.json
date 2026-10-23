@@ -1,0 +1,10 @@
+{
+  "baseUrl": "http://<DETECTED_WIFI_GATEWAY>",
+  "username": "admin",
+  "password": "<ROUTER_ADMIN_PASSWORD>",
+  "reserveAddress": true,
+  "mappings": [
+    {"name": "minio-s3", "externalPort": 9000, "internalPort": 9000},
+    {"name": "minio-console", "externalPort": 9001, "internalPort": 9001}
+  ]
+}

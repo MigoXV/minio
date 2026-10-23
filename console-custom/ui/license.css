@@ -1,0 +1,31 @@
+.av-license {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.av-license .openSource,
+.av-license .enterprise {
+  border-color: var(--border) !important;
+  border-width: 1px !important;
+  background: var(--surface);
+}
+.av-license .first,
+.av-license .last {
+  border-radius: 6px !important;
+}
+.av-license .planName {
+  color: var(--bg-primary) !important;
+  border-radius: 6px 6px 0 0 !important;
+}
+.av-license .planName.openSource {
+  background: var(--text-primary);
+}
+.av-license .planName.enterprise {
+  background: var(--text-tertiary);
+  color: var(--on-accent) !important;
+}
+.av-license .feature-information {
+  text-align: left !important;
+}
+.av-license .planIcon svg {
+  max-width: 100%;
+}

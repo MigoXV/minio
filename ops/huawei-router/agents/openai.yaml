@@ -1,0 +1,4 @@
+interface:
+  display_name: "华为路由器管理"
+  short_description: "管理华为家庭路由器登录、WAN 诊断与最小范围 NAT 端口映射"
+  default_prompt: "使用 $huawei-router 检查当前华为路由器并配置指定端口映射。"

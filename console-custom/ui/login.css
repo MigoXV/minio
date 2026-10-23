@@ -1,0 +1,133 @@
+.av-login {
+  min-height: 100dvh;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+.av-login-header {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.av-login-logo {
+  width: 120px;
+  height: 21px;
+  display: block;
+}
+[data-theme="abyssus"] .av-login-logo {
+  filter: invert(91%) sepia(7%) saturate(282%) hue-rotate(165deg);
+}
+.av-login-center {
+  flex: 1;
+  min-height: 394px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.av-login-form {
+  width: 360px;
+  max-width: 100%;
+  height: 330px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin: 0;
+}
+.av-login-title {
+  height: 62px;
+  flex-shrink: 0;
+}
+.av-login h1 {
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: var(--minio-heading-weight);
+  margin: 0 0 8px;
+}
+.av-login-title p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 22px;
+}
+.av-login-credentials {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.av-login-credentials label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 18px;
+}
+.av-login-credentials .av-field,
+.av-login-credentials .av-password {
+  width: 100%;
+}
+.av-login-form > .av-button {
+  width: 100%;
+  flex-shrink: 0;
+  font-size: 14px;
+}
+.av-login-feedback {
+  height: 44px;
+  flex-shrink: 0;
+  font-size: 13px;
+  line-height: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.av-login-feedback p {
+  margin: 0;
+}
+.av-login-feedback small {
+  color: var(--text-secondary);
+  font-size: inherit;
+}
+.av-login-feedback[data-state="default"] {
+  color: var(--text-secondary);
+}
+.av-login-help {
+  min-height: 32px;
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  font-size: 12px;
+  line-height: 20px;
+}
+.av-login-help a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  text-underline-offset: 3px;
+}
+.av-login-help a:hover {
+  text-decoration: underline;
+}
+.av-login-service {
+  width: 360px;
+  max-width: 100%;
+  font-size: 14px;
+  line-height: 1.6;
+}
+@media (max-width: 600px) {
+  .av-login {
+    padding: 24px 20px;
+  }
+  .av-login-logo {
+    width: 120px;
+  }
+  .av-login .av-appearance > button {
+    font-size: 12px;
+    gap: 4px;
+  }
+  .av-login-help {
+    gap: 16px;
+  }
+}
