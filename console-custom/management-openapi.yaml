@@ -1,0 +1,255 @@
+openapi: 3.0.3
+info:
+  title: MinIO LAN management extension
+  version: 1.0.0
+  description: >-
+    Same-origin Console routes implemented in server/manage.go. Every request
+    requires the Console session cookie; mutations require a matching Origin
+    and same-origin Fetch Metadata. MinIO itself authorizes each operation with
+    the session's STS credentials. Error responses never include secret values.
+servers:
+  - url: /api/v1/manage
+security:
+  - consoleSession: []
+components:
+  securitySchemes:
+    consoleSession:
+      type: apiKey
+      in: cookie
+      name: token
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+    User:
+      type: object
+      properties:
+        name: { type: string }
+        status: { type: string, enum: [enabled, disabled] }
+        policy: { type: string }
+        groups: { type: array, items: { type: string } }
+        auth: { type: object, additionalProperties: true }
+    ServiceAccount:
+      type: object
+      properties:
+        accessKey: { type: string }
+        accountStatus: { type: string }
+        name: { type: string }
+        description: { type: string }
+        expiration: { type: string, format: date-time }
+    CreatedKey:
+      type: object
+      description: Returned once on creation; secretKey is never returned by list.
+      required: [accessKey, secretKey]
+      properties:
+        accessKey: { type: string }
+        secretKey: { type: string }
+  responses:
+    Failed:
+      description: Unauthorized, forbidden, invalid, missing, conflict, or upstream failure.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+paths:
+  /me:
+    get:
+      summary: Current account identifier
+      responses:
+        '200': { description: Current account; no STS secret is returned }
+        default: { $ref: '#/components/responses/Failed' }
+  /overview:
+    get:
+      summary: Restricted server mode, region and node count
+      responses:
+        '200': { description: Server summary }
+        default: { $ref: '#/components/responses/Failed' }
+  /users:
+    get:
+      summary: List users with secrets removed
+      responses:
+        '200':
+          description: Users
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/User' } }
+        default: { $ref: '#/components/responses/Failed' }
+    post:
+      summary: Create local user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, password]
+              properties:
+                name: { type: string }
+                password: { type: string, minLength: 8, writeOnly: true }
+      responses:
+        '201': { description: Created }
+        default: { $ref: '#/components/responses/Failed' }
+  /users/{name}:
+    parameters:
+      - in: path
+        name: name
+        required: true
+        schema: { type: string }
+    get:
+      summary: Get user detail without the secret key
+      responses:
+        '200': { description: User detail }
+        default: { $ref: '#/components/responses/Failed' }
+    put:
+      summary: Change user status or reset password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string, enum: [enabled, disabled] }
+                password: { type: string, minLength: 8, writeOnly: true }
+      responses:
+        '200': { description: Updated }
+        default: { $ref: '#/components/responses/Failed' }
+    delete:
+      summary: Delete user; current account cannot delete itself
+      responses:
+        '200': { description: Deleted }
+        default: { $ref: '#/components/responses/Failed' }
+  /groups:
+    get:
+      summary: List groups
+      responses:
+        '200': { description: Group names }
+        default: { $ref: '#/components/responses/Failed' }
+    post:
+      summary: Create group with at least one existing member
+      responses:
+        '201': { description: Created }
+        default: { $ref: '#/components/responses/Failed' }
+  /groups/{name}:
+    parameters:
+      - in: path
+        name: name
+        required: true
+        schema: { type: string }
+    get:
+      summary: Group status, members and attached policy
+      responses:
+        '200': { description: Group detail }
+        default: { $ref: '#/components/responses/Failed' }
+    put:
+      summary: Add/remove one member or change group status
+      responses:
+        '200': { description: Updated }
+        default: { $ref: '#/components/responses/Failed' }
+  /policies:
+    get:
+      summary: List policy names
+      responses:
+        '200': { description: Policy names }
+        default: { $ref: '#/components/responses/Failed' }
+  /policies/{name}:
+    parameters:
+      - in: path
+        name: name
+        required: true
+        schema: { type: string }
+    get:
+      summary: Read policy JSON
+      responses:
+        '200': { description: Policy document }
+        default: { $ref: '#/components/responses/Failed' }
+    put:
+      summary: Create or update policy JSON
+      responses:
+        '200': { description: Saved }
+        default: { $ref: '#/components/responses/Failed' }
+    delete:
+      summary: Delete policy
+      responses:
+        '200': { description: Deleted }
+        default: { $ref: '#/components/responses/Failed' }
+  /associations:
+    post:
+      summary: Attach or detach one policy to one user or group
+      responses:
+        '200': { description: Updated }
+        default: { $ref: '#/components/responses/Failed' }
+  /keys:
+    get:
+      summary: List current account's service accounts, without secrets
+      responses:
+        '200':
+          description: Service accounts
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/ServiceAccount' } }
+        default: { $ref: '#/components/responses/Failed' }
+    post:
+      summary: Create service account for current account
+      responses:
+        '201':
+          description: Created; secret visible only in this response
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreatedKey' }
+        default: { $ref: '#/components/responses/Failed' }
+  /keys/{accessKey}:
+    delete:
+      summary: Revoke service account
+      parameters:
+        - in: path
+          name: accessKey
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Revoked }
+        default: { $ref: '#/components/responses/Failed' }
+  /config/{subsystem}:
+    get:
+      summary: Read config field help only; current values are omitted
+      parameters:
+        - in: path
+          name: subsystem
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Help metadata }
+        default: { $ref: '#/components/responses/Failed' }
+  /buckets/{bucket}/policy:
+    parameters:
+      - in: path
+        name: bucket
+        required: true
+        schema: { type: string }
+    get:
+      summary: Read bucket policy
+      responses:
+        '200': { description: Policy JSON as string }
+        default: { $ref: '#/components/responses/Failed' }
+    put:
+      summary: Set bucket policy; empty string removes it
+      responses:
+        '200': { description: Saved }
+        default: { $ref: '#/components/responses/Failed' }
+  /buckets/{bucket}/versioning:
+    parameters:
+      - in: path
+        name: bucket
+        required: true
+        schema: { type: string }
+    get:
+      summary: Read versioning state
+      responses:
+        '200': { description: State }
+        default: { $ref: '#/components/responses/Failed' }
+    put:
+      summary: Enable or suspend versioning
+      responses:
+        '200': { description: Updated }
+        default: { $ref: '#/components/responses/Failed' }

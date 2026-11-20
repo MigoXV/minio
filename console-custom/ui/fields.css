@@ -1,0 +1,95 @@
+/* Figma MinIO/Field/Surface 155:1145; existing AV colors, no new palette. */
+[data-theme="vallum"] {
+  --minio-control-radius: 2px;
+  --minio-input-bg: var(--surface-subtle);
+  --minio-input-border: var(--text-secondary);
+  --minio-input-border-hover: var(--text-primary);
+  --minio-input-border-focus: var(--accent-strong);
+  --minio-heading-weight: 500;
+  --minio-label-weight: 400;
+}
+[data-theme="abyssus"] {
+  --minio-control-radius: 2px;
+  --minio-input-bg: var(--surface-subtle);
+  --minio-input-border: var(--accent-muted);
+  --minio-input-border-hover: var(--text-secondary);
+  --minio-input-border-focus: var(--focus);
+  --minio-heading-weight: 600;
+  --minio-label-weight: 500;
+}
+.av-field,
+.av-manage-form select,
+.av-search,
+.av-filter-row input {
+  height: 32px;
+  min-width: 0;
+  border: 1px solid var(--minio-input-border);
+  border-radius: var(--minio-control-radius);
+  background: var(--minio-input-bg);
+  color: var(--text-primary);
+  padding: 0 12px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+  transition: border-color 160ms;
+}
+.av-field::placeholder,
+.av-filter-row input::placeholder {
+  color: var(--text-secondary);
+  opacity: 1;
+}
+/* Preserve the leading icon's slot when applying the shared field padding. */
+.av-filter-row .startOverlayIcon + input {
+  padding-left: 36px;
+}
+.av-field:hover:not(:disabled),
+.av-manage-form select:hover:not(:disabled),
+.av-search:hover {
+  border-color: var(--minio-input-border-hover);
+}
+.av-field:focus,
+.av-manage-form select:focus,
+.av-search:focus-within {
+  border-color: var(--minio-input-border-focus);
+  outline: 1px solid var(--minio-input-border-focus);
+  outline-offset: 0;
+}
+.av-field[aria-invalid="true"] {
+  border-color: var(--av-danger);
+}
+.av-field:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.av-password {
+  display: inline-flex;
+  position: relative;
+  min-width: 0;
+}
+.av-password > .av-field {
+  width: 100%;
+  padding-right: 36px;
+}
+.av-password > button {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.av-password > button:disabled {
+  cursor: not-allowed;
+}
+.av-password > button img {
+  display: block;
+}
+[data-theme="abyssus"] .av-password > button img {
+  filter: invert(91%) sepia(7%) saturate(282%) hue-rotate(165deg);
+}

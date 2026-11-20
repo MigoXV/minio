@@ -1,0 +1,929 @@
+--- a/web-app/src/StyleHandler.tsx
++++ b/web-app/src/StyleHandler.tsx
+@@ -14,6 +14,7 @@
+ // You should have received a copy of the GNU Affero General Public License
+ // along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ 
++import { AppearanceProvider } from "./custom/Appearance";
+ import React, { Fragment } from "react";
+ import { GlobalStyles, ThemeHandler } from "mds";
+ import "react-virtualized/styles.css";
+@@ -43,7 +44,7 @@
+     <Fragment>
+       <GlobalStyles />
+       <ThemeHandler darkMode={darkMode} customTheme={thm}>
+-        {children}
++        <AppearanceProvider>{children}</AppearanceProvider>
+       </ThemeHandler>
+     </Fragment>
+   );
+--- a/web-app/src/screens/Console/Buckets/BucketDetails/BrowserHandler.tsx
++++ b/web-app/src/screens/Console/Buckets/BucketDetails/BrowserHandler.tsx
+@@ -208,7 +208,7 @@
+   return (
+     <Fragment>
+       {!anonymousMode && <OBHeader bucketName={bucketName} />}
+-      <ListObjects />
++      <div className="av-bucket-page"><ListObjects /></div>
+     </Fragment>
+   );
+ };
+--- a/web-app/src/screens/Console/Buckets/ListBuckets/Objects/ListObjects/DetailsListPanel.tsx
++++ b/web-app/src/screens/Console/Buckets/ListBuckets/Objects/ListObjects/DetailsListPanel.tsx
+@@ -15,7 +15,8 @@
+ // along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ import React from "react";
+-import { Box, Button, ClosePanelIcon } from "mds";
++import { Box } from "mds";
++import Icon from "custom/Icon";
+
+ interface IDetailsListPanel {
+   open: boolean;
+@@ -63,22 +64,8 @@
+       }}
+       className={`${open ? "open" : ""} ${className}`}
+     >
+-      <Button
+-        variant={"text"}
+-        id={"close-details-list"}
+-        onClick={closePanel}
+-        icon={<ClosePanelIcon />}
+-        sx={{
+-          position: "absolute",
+-          right: 5,
+-          top: 18,
+-          padding: 0,
+-          height: 14,
+-          "&:hover:not(:disabled)": {
+-            backgroundColor: "transparent",
+-          },
+-        }}
+-      />
++      <button type="button" id="close-details-list" className="av-button av-ghost" aria-label="关闭对象详情" onClick={closePanel}><Icon name="close" /></button>
++      <h2 className="av-details-heading">对象详情</h2>
+       {children}
+     </Box>
+   );
+--- a/web-app/src/screens/Console/Buckets/ListBuckets/Objects/ListObjects/ListObjects.tsx
++++ b/web-app/src/screens/Console/Buckets/ListBuckets/Objects/ListObjects/ListObjects.tsx
+@@ -946,13 +946,13 @@
+         />
+       )}
+ 
+-      <PageLayout variant={"full"}>
++      <PageLayout variant={"full"} sx={{padding:0}}>
+         {anonymousMode && (
+           <div style={{ paddingBottom: 16 }}>
+             <FilterObjectsSB />
+           </div>
+         )}
+-        <Box withBorders sx={{ padding: "0 5px" }}>
++        <Box sx={{ padding: 0 }}>
+           <ScreenTitle
+             icon={
+               <span>
+@@ -973,7 +973,7 @@
+                   }}
+                 >
+                   <span className={"detailsSpacer"}>
+-                    Created on:&nbsp;
++                    创建于&nbsp;
+                     <strong>
+                       {bucketInfo?.creation_date
+                         ? createdTime.toFormat(
+@@ -983,7 +983,7 @@
+                     </strong>
+                   </span>
+                   <span className={"detailsSpacer"}>
+-                    Access:&nbsp;&nbsp;
++                    访问权限:&nbsp;&nbsp;
+                     <strong>{bucketInfo?.access || ""}</strong>
+                   </span>
+                   {bucketInfo && (
+@@ -1032,7 +1032,7 @@
+                   >
+                     <Button
+                       id={"rewind-objects-list"}
+-                      label={"Rewind"}
++                      label={"历史回溯"}
+                       icon={
+                         <Badge color="alert" dotOnly invisible={!rewindEnabled}>
+                           <HistoryIcon
+@@ -1057,7 +1057,7 @@
+                 <TooltipWrapper tooltip={"Reload List"}>
+                   <Button
+                     id={"refresh-objects-list"}
+-                    label={"Refresh"}
++                    label={"刷新"}
+                     icon={<RefreshIcon />}
+                     variant={"regular"}
+                     onClick={() => {
+@@ -1116,6 +1116,7 @@
+             bottomBorder={false}
+           />
+         </Box>
++        {!versionsMode && <div className={`av-filter-row ${detailsOpen ? "has-details" : ""}`}><FilterObjectsSB /><span className="av-flex"/><span className="av-density">紧凑</span></div>}
+         <div
+           id="object-list-wrapper"
+           {...getRootProps({ style: { ...dndStyles } })}
+@@ -1183,7 +1184,7 @@
+                               name={"deleted_objects"}
+                               id={"showDeletedObjects"}
+                               value={"deleted_on"}
+-                              label={"Show deleted objects"}
++                              label={"显示已删除对象"}
+                               onChange={setDeletedAction}
+                               checked={showDeleted}
+                               sx={{
+@@ -1201,6 +1202,7 @@
+                     </Grid>
+                   )}
+                   <ListObjectsTable />
++                  <div className="av-list-footer"><span>{records.length} 个对象</span><span>已选择 {selectedObjects.length} 项</span></div>
+                 </Grid>
+               </SecureComponent>
+             )}
+@@ -1223,7 +1225,7 @@
+                   {selectedObjects.length > 0 && (
+                     <ActionsList
+                       items={multiActionButtons}
+-                      title={"Selected Objects:"}
++                      title={"已选择对象"}
+                     />
+                   )}
+                   {selectedInternalPaths !== null && (
+--- a/web-app/src/screens/Console/Buckets/ListBuckets/Objects/ListObjects/ListObjectsHelpers.tsx
++++ b/web-app/src/screens/Console/Buckets/ListBuckets/Objects/ListObjects/ListObjectsHelpers.tsx
+@@ -35,7 +35,7 @@
+     currTime.hasSame(objectTime, "year");
+ 
+   if (isToday) {
+-    return `Today, ${objectTime.toFormat("HH:mm")}`;
++    return `今天 ${objectTime.toFormat("HH:mm")}`;
+   }
+ 
+   return objectTime.toFormat("ccc, LLL dd yyyy HH:mm (ZZZZ)");
+@@ -56,20 +56,20 @@
+ 
+ export const listModeColumns = [
+   {
+-    label: "Name",
++    label: "名称",
+     elementKey: "name",
+     renderFunction: displayFileIconName,
+     enableSort: true,
+   },
+   {
+-    label: "Last Modified",
++    label: "修改时间",
+     elementKey: "last_modified",
+     renderFunction: displayParsedDate,
+     renderFullObject: true,
+     enableSort: true,
+   },
+   {
+-    label: "Size",
++    label: "大小",
+     elementKey: "size",
+     renderFunction: displayNiceBytes,
+     renderFullObject: true,
+@@ -80,7 +80,7 @@
+ 
+ export const rewindModeColumns = [
+   {
+-    label: "Name",
++    label: "名称",
+     elementKey: "name",
+     renderFunction: displayFileIconName,
+     enableSort: true,
+@@ -93,7 +93,7 @@
+     enableSort: true,
+   },
+   {
+-    label: "Size",
++    label: "大小",
+     elementKey: "size",
+     renderFunction: displayNiceBytes,
+     renderFullObject: true,
+--- a/web-app/src/screens/Console/Buckets/ListBuckets/Objects/ListObjects/ListObjectsTable.tsx
++++ b/web-app/src/screens/Console/Buckets/ListBuckets/Objects/ListObjects/ListObjectsTable.tsx
+@@ -20,6 +20,8 @@
+ import { AppState, useAppDispatch } from "../../../../../../store";
+ import { selFeatures } from "../../../../consoleSlice";
+ import {
++  setPreviewOpen,
++  setSelectedPreview,
+   setLoadingVersions,
+   setObjectDetailsView,
+   setReloadObjectsList,
+@@ -125,6 +127,13 @@
+   };
+   const tableActions: ItemActions[] = [
+     {
++      type: "preview",
++      tooltip: "预览",
++      isDisabled: (object: BucketObject) => !!object.name?.endsWith('/') || !hasPermission(`${bucketName}/${object.name}`, [IAM_SCOPES.S3_GET_OBJECT, IAM_SCOPES.S3_GET_ACTIONS]),
++      onClick: (object: BucketObjectItem) => { dispatch(setSelectedPreview(object)); dispatch(setPreviewOpen(true)); },
++      sendOnlyId: false,
++    },
++    {
+       type: "view",
+       tooltip: "View",
+       onClick: openPath,
+@@ -186,7 +195,7 @@
+       "Objects List unavailable. Please review your WebSockets configuration and try again";
+   }
+ 
+-  let customPaperHeight = "calc(100vh - 290px)";
++  let customPaperHeight = "calc(100vh - 310px)";
+ 
+   if (obOnly) {
+     customPaperHeight = "calc(100vh - 315px)";
+@@ -194,6 +203,8 @@
+ 
+   return (
+     <DataTable
++      rowHeight={36}
++      parentClassName="av-object-table"
+       itemActions={tableActions}
+       columns={rewindEnabled ? rewindModeColumns : listModeColumns}
+       isLoading={requestInProgress}
+--- a/web-app/src/screens/Console/Buckets/ListBuckets/Objects/ListObjects/ObjectDetailPanel.tsx
++++ b/web-app/src/screens/Console/Buckets/ListBuckets/Objects/ListObjects/ObjectDetailPanel.tsx
+@@ -18,18 +18,14 @@
+ import get from "lodash/get";
+ import { useSelector } from "react-redux";
+ import {
+-  ActionsList,
+   Box,
+   Button,
+   DeleteIcon,
+   DownloadIcon,
+   Grid,
+   Loader,
+-  MetadataIcon,
+-  ObjectInfoIcon,
+   PreviewIcon,
+   ShareIcon,
+-  SimpleHeader,
+   TagsIcon,
+   VersionsIcon,
+ } from "mds";
+@@ -345,7 +341,7 @@
+       label: "Preview",
+       disabled:
+         !!actualInfo.is_delete_marker ||
+-        (objectType === "none" && !canGetObject),
++        (objectType === "none" || !canGetObject),
+       icon: <PreviewIcon />,
+       tooltip: canGetObject
+         ? "Preview this File"
+@@ -469,44 +465,111 @@
+       {loadingObjectInfo ? (
+         <Fragment>{loaderForContainer}</Fragment>
+       ) : (
+-        <Box
+-          sx={{
+-            "& .ObjectDetailsTitle": {
+-              display: "flex",
+-              alignItems: "center",
+-              "& .min-icon": {
+-                width: 26,
+-                height: 26,
+-                minWidth: 26,
+-                minHeight: 26,
+-              },
+-            },
+-            "& .objectNameContainer": {
+-              whiteSpace: "nowrap",
+-              textOverflow: "ellipsis",
+-              overflow: "hidden",
+-              alignItems: "center",
+-              marginLeft: 10,
+-            },
+-            "& .capitalizeFirst": {
+-              textTransform: "capitalize",
+-            },
+-            "& .detailContainer": {
+-              padding: "0 22px",
+-              marginBottom: 10,
+-              fontSize: 14,
+-            },
+-          }}
+-        >
+-          <ActionsList
+-            title={
+-              <div className={"ObjectDetailsTitle"}>
+-                {displayFileIconName(objectName || "", true)}
+-                <span className={"objectNameContainer"}>{objectName}</span>
+-              </div>
+-            }
+-            items={multiActionButtons}
+-          />
++        <div className="av-object-details">
++          <div className="av-object-name">{displayFileIconName(objectName || "", true)}<span>{objectName}</span></div>
++          <div className="av-detail-actions">{[multiActionButtons[2],multiActionButtons[0],multiActionButtons[1]].map((action,index)=><button type="button" key={action.label} id={`detail-action-${index}`} className={`av-button ${index===0?'av-primary':''}`} aria-label={action.label} title={['预览','下载','分享'][index]} disabled={action.disabled} onClick={action.action}>{action.icon}{index===0?'预览':null}</button>)}</div>
++          <div className="av-details-info"><h3>对象信息</h3>
++
++          {selectedVersion !== "" && (
++            <Box className={"detailContainer"}>
++              <strong>Version ID:</strong>
++              <br />
++              {selectedVersion}
++            </Box>
++          )}
++          <Box className={"detailContainer"}>
++            <strong>大小</strong>
++            <br />
++            {niceBytes(`${actualInfo.size || "0"}`)}
++          </Box>
++          {actualInfo.version_id &&
++            actualInfo.version_id !== "null" &&
++            selectedVersion === "" && (
++              <Box className={"detailContainer"}>
++                <strong>Versions:</strong>
++                <br />
++                {versions.length}
++                {moreVersionsThanLimit ? "+" : ""} version
++                {versions.length !== 1 ? "s" : ""},{" "}
++                {niceBytesInt(totalVersionsSize)}
++                {moreVersionsThanLimit ? "+" : ""}
++              </Box>
++            )}
++          {selectedVersion === "" && (
++            <Box className={"detailContainer"}>
++              <strong>修改时间</strong>
++              <br />
++              {calculateLastModifyTime(actualInfo.last_modified || "")}
++            </Box>
++          )}
++          <Box className={"detailContainer av-etag"}>
++            <strong>ETag</strong>
++            <br />
++            {actualInfo.etag || "N/A"}
++          </Box>
++          <Box className={"detailContainer"}>
++            <strong>标签</strong>
++            <br />
++            {tagKeys.length === 0
++              ? "无"
++              : tagKeys.map((tagKey, index) => {
++                  return (
++                    <span key={`key-vs-${index.toString()}`}>
++                      {tagKey}:{get(actualInfo, `tags.${tagKey}`, "")}
++                      {index < tagKeys.length - 1 ? ", " : ""}
++                    </span>
++                  );
++                })}
++          </Box>
++          <Box className={"detailContainer"}>
++            <SecureComponent
++              scopes={[
++                IAM_SCOPES.S3_GET_OBJECT_LEGAL_HOLD,
++                IAM_SCOPES.S3_GET_ACTIONS,
++              ]}
++              resource={bucketName}
++            >
++              <Fragment>
++                <strong>法律保留</strong>
++                <br />
++                {actualInfo.legal_hold_status ? "已开启" : "已关闭"}
++              </Fragment>
++            </SecureComponent>
++          </Box>
++          <Box className={"detailContainer"}>
++            <SecureComponent
++              scopes={[
++                IAM_SCOPES.S3_GET_OBJECT_RETENTION,
++                IAM_SCOPES.S3_GET_ACTIONS,
++              ]}
++              resource={bucketName}
++            >
++              <Fragment>
++                <strong>保留策略</strong>
++                <br />
++                <span className={"capitalizeFirst"}>
++                  {actualInfo.version_id && actualInfo.version_id !== "null" ? (
++                    <Fragment>
++                      {actualInfo.retention_mode
++                        ? actualInfo.retention_mode.toLowerCase()
++                        : "无"}
++                    </Fragment>
++                  ) : (
++                    <Fragment>
++                      {actualInfo.retention_mode
++                        ? actualInfo.retention_mode.toLowerCase()
++                        : "无"}
++                    </Fragment>
++                  )}
++                </span>
++              </Fragment>
++            </SecureComponent>
++          </Box>
++          {!actualInfo.is_delete_marker && <div className="detailContainer"><strong>内容类型</strong><span>{metaData?.['Content-Type'] || metaData?.['content-type'] || '—'}</span></div>}
++          <details><summary>全部元数据</summary>{metaData&&<ObjectMetaData metaData={metaData}/>}</details>
++          </div>
++          <div className="av-detail-secondary">{multiActionButtons.slice(3).map((action,index)=><Button key={action.label} id={`detail-secondary-${index}`} label={index===0?'标签':versionsMode?'隐藏对象版本':'查看对象版本'} aria-label={action.label} icon={action.icon} disabled={action.disabled} onClick={action.action} variant="text"/>)}</div>
++          <div className="av-detail-delete">
+           <TooltipWrapper
+             tooltip={
+               canDelete
+@@ -550,123 +613,13 @@
+                     width: "calc(100% - 44px)",
+                     margin: "8px 0",
+                   }}
+-                  label={`Delete${selectedVersion !== "" ? " version" : ""}`}
++                  label={`删除${selectedVersion !== "" ? "版本" : ""}`}
+                 />
+               </SecureComponent>
+             </Grid>
+           </TooltipWrapper>
+-          <SimpleHeader icon={<ObjectInfoIcon />} label={"Object Info"} />
+-          <Box className={"detailContainer"}>
+-            <strong>Name:</strong>
+-            <br />
+-            <div style={{ overflowWrap: "break-word" }}>{objectName}</div>
+-          </Box>
+-          {selectedVersion !== "" && (
+-            <Box className={"detailContainer"}>
+-              <strong>Version ID:</strong>
+-              <br />
+-              {selectedVersion}
+-            </Box>
+-          )}
+-          <Box className={"detailContainer"}>
+-            <strong>Size:</strong>
+-            <br />
+-            {niceBytes(`${actualInfo.size || "0"}`)}
+-          </Box>
+-          {actualInfo.version_id &&
+-            actualInfo.version_id !== "null" &&
+-            selectedVersion === "" && (
+-              <Box className={"detailContainer"}>
+-                <strong>Versions:</strong>
+-                <br />
+-                {versions.length}
+-                {moreVersionsThanLimit ? "+" : ""} version
+-                {versions.length !== 1 ? "s" : ""},{" "}
+-                {niceBytesInt(totalVersionsSize)}
+-                {moreVersionsThanLimit ? "+" : ""}
+-              </Box>
+-            )}
+-          {selectedVersion === "" && (
+-            <Box className={"detailContainer"}>
+-              <strong>Last Modified:</strong>
+-              <br />
+-              {calculateLastModifyTime(actualInfo.last_modified || "")}
+-            </Box>
+-          )}
+-          <Box className={"detailContainer"}>
+-            <strong>ETAG:</strong>
+-            <br />
+-            {actualInfo.etag || "N/A"}
+-          </Box>
+-          <Box className={"detailContainer"}>
+-            <strong>Tags:</strong>
+-            <br />
+-            {tagKeys.length === 0
+-              ? "N/A"
+-              : tagKeys.map((tagKey, index) => {
+-                  return (
+-                    <span key={`key-vs-${index.toString()}`}>
+-                      {tagKey}:{get(actualInfo, `tags.${tagKey}`, "")}
+-                      {index < tagKeys.length - 1 ? ", " : ""}
+-                    </span>
+-                  );
+-                })}
+-          </Box>
+-          <Box className={"detailContainer"}>
+-            <SecureComponent
+-              scopes={[
+-                IAM_SCOPES.S3_GET_OBJECT_LEGAL_HOLD,
+-                IAM_SCOPES.S3_GET_ACTIONS,
+-              ]}
+-              resource={bucketName}
+-            >
+-              <Fragment>
+-                <strong>Legal Hold:</strong>
+-                <br />
+-                {actualInfo.legal_hold_status ? "On" : "Off"}
+-              </Fragment>
+-            </SecureComponent>
+-          </Box>
+-          <Box className={"detailContainer"}>
+-            <SecureComponent
+-              scopes={[
+-                IAM_SCOPES.S3_GET_OBJECT_RETENTION,
+-                IAM_SCOPES.S3_GET_ACTIONS,
+-              ]}
+-              resource={bucketName}
+-            >
+-              <Fragment>
+-                <strong>Retention Policy:</strong>
+-                <br />
+-                <span className={"capitalizeFirst"}>
+-                  {actualInfo.version_id && actualInfo.version_id !== "null" ? (
+-                    <Fragment>
+-                      {actualInfo.retention_mode
+-                        ? actualInfo.retention_mode.toLowerCase()
+-                        : "None"}
+-                    </Fragment>
+-                  ) : (
+-                    <Fragment>
+-                      {actualInfo.retention_mode
+-                        ? actualInfo.retention_mode.toLowerCase()
+-                        : "None"}
+-                    </Fragment>
+-                  )}
+-                </span>
+-              </Fragment>
+-            </SecureComponent>
+-          </Box>
+-          {!actualInfo.is_delete_marker && (
+-            <Fragment>
+-              <SimpleHeader label={"Metadata"} icon={<MetadataIcon />} />
+-              <Box className={"detailContainer"}>
+-                {actualInfo && metaData ? (
+-                  <ObjectMetaData metaData={metaData} />
+-                ) : null}
+-              </Box>
+-            </Fragment>
+-          )}
+-        </Box>
++          </div>
++        </div>
+       )}
+     </Fragment>
+   );
+--- a/web-app/src/screens/Console/Buckets/ListBuckets/Objects/ListObjects/utils.tsx
++++ b/web-app/src/screens/Console/Buckets/ListBuckets/Objects/ListObjects/utils.tsx
+@@ -15,6 +15,7 @@
+ // along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ 
+ import React from "react";
++import Icon from "custom/Icon";
+ 
+ import {
+   FileBookIcon,
+@@ -25,11 +26,8 @@
+   FileImageIcon,
+   FileLockIcon,
+   FileMissingIcon,
+-  FileMusicIcon,
+-  FileNonType,
+   FilePdfIcon,
+   FilePptIcon,
+-  FileTxtIcon,
+   FileVideoIcon,
+   FileXlsIcon,
+   FileZipIcon,
+@@ -48,8 +46,8 @@
+     extensions: ["mp4", "mov", "avi", "mpeg", "mpg"],
+   },
+   {
+-    icon: <FileMusicIcon />,
+-    extensions: ["mp3", "m4a", "aac"],
++    icon: <Icon name="audio"/>,
++    extensions: ["mp3", "m4a", "aac", "wav", "wave", "flac", "ogg", "oga", "opus"],
+   },
+   {
+     icon: <FilePdfIcon />,
+@@ -84,7 +82,7 @@
+     extensions: ["ttf", "otf"],
+   },
+   {
+-    icon: <FileTxtIcon />,
++    icon: <Icon name="file"/>,
+     extensions: ["doc", "docx", "txt", "rtf"],
+   },
+   {
+@@ -106,7 +104,7 @@
+   returnOnlyIcon: boolean = false,
+ ) => {
+   let elementString = element;
+-  let icon = <FileNonType />;
++  let icon = <Icon name="file"/>;
+   // Element is a folder
+   if (element.endsWith("/")) {
+     icon = <FolderBrowserIcon />;
+--- a/web-app/src/screens/Console/Buckets/ListBuckets/Objects/Preview/PreviewFileContent.tsx
++++ b/web-app/src/screens/Console/Buckets/ListBuckets/Objects/Preview/PreviewFileContent.tsx
+@@ -98,7 +98,7 @@
+         </Grid>
+       )}
+       {isMetaDataLoaded ? (
+-        <Box
++        <Box className="av-file-preview"
+           sx={{
+             textAlign: "center",
+             "& .iframeContainer": {
+@@ -152,6 +152,8 @@
+               key={path}
+               path={path}
+               size={actualInfo.size}
++              name={objectName}
++              bucket={bucketName}
+               onLoad={iframeLoaded}
+               downloadFile={() => downloadObject(dispatch, bucketName, objectName, actualInfo)}
+             />
+--- a/web-app/src/screens/Console/Buckets/ListBuckets/UploadFilesButton.tsx
++++ b/web-app/src/screens/Console/Buckets/ListBuckets/UploadFilesButton.tsx
+@@ -117,7 +117,7 @@
+           aria-haspopup="true"
+           aria-expanded={openUploadMenu ? "true" : undefined}
+           onClick={handleClick}
+-          label={"Upload"}
++          label={"上传"}
+           icon={<UploadIcon />}
+           variant={"callAction"}
+           disabled={forceDisable || !uploadEnabled}
+@@ -128,13 +128,13 @@
+         id={"upload-main-menu"}
+         options={[
+           {
+-            label: "Upload File",
++            label: "上传文件",
+             icon: <UploadIcon />,
+             value: "file",
+             disabled: !uploadObjectAllowed || forceDisable,
+           },
+           {
+-            label: "Upload Folder",
++            label: "上传文件夹",
+             icon: <UploadFolderIcon />,
+             value: "folder",
+             disabled: !uploadFolderAllowed || forceDisable,
+--- a/web-app/src/screens/Console/Common/DarkModeActivator/DarkModeActivator.tsx
++++ b/web-app/src/screens/Console/Common/DarkModeActivator/DarkModeActivator.tsx
+@@ -1,48 +1,2 @@
+-// This file is part of MinIO Console Server
+-// Copyright (c) 2023 MinIO, Inc.
+-//
+-// This program is free software: you can redistribute it and/or modify
+-// it under the terms of the GNU Affero General Public License as published by
+-// the Free Software Foundation, either version 3 of the License, or
+-// (at your option) any later version.
+-//
+-// This program is distributed in the hope that it will be useful,
+-// but WITHOUT ANY WARRANTY; without even the implied warranty of
+-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+-// GNU Affero General Public License for more details.
+-//
+-// You should have received a copy of the GNU Affero General Public License
+-// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+-
+-import React from "react";
+-import { Button, DarkModeIcon, LightModeIcon } from "mds";
+-import TooltipWrapper from "../TooltipWrapper/TooltipWrapper";
+-import { useSelector } from "react-redux";
+-import { AppState, useAppDispatch } from "../../../../store";
+-import { setDarkMode } from "../../../../systemSlice";
+-import { storeDarkMode } from "../../../../utils/stylesUtils";
+-
+-const DarkModeActivator = () => {
+-  const dispatch = useAppDispatch();
+-
+-  const darkMode = useSelector((state: AppState) => state.system.darkMode);
+-
+-  const darkModeActivator = () => {
+-    const currentStatus = !!darkMode;
+-
+-    dispatch(setDarkMode(!currentStatus));
+-    storeDarkMode(!currentStatus ? "on" : "off");
+-  };
+-
+-  return (
+-    <TooltipWrapper tooltip={`${darkMode ? "Light" : "Dark"} Mode`}>
+-      <Button
+-        id={"dark-mode-activator"}
+-        icon={darkMode ? <LightModeIcon /> : <DarkModeIcon />}
+-        onClick={darkModeActivator}
+-      />
+-    </TooltipWrapper>
+-  );
+-};
+-
+-export default DarkModeActivator;
++// SPDX-License-Identifier: AGPL-3.0-or-later
++export {default} from "custom/Appearance";
+--- a/web-app/src/screens/Console/Common/PageHeaderWrapper/PageHeaderWrapper.tsx
++++ b/web-app/src/screens/Console/Common/PageHeaderWrapper/PageHeaderWrapper.tsx
+@@ -15,7 +15,7 @@
+ // along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ 
+ import React, { Fragment } from "react";
+-import { PageHeader } from "mds";
++
+ import ObjectManagerButton from "../ObjectManager/ObjectManagerButton";
+ import DarkModeActivator from "../DarkModeActivator/DarkModeActivator";
+ 
+@@ -31,17 +31,15 @@
+   middleComponent,
+ }: IPageHeaderWrapper) => {
+   return (
+-    <PageHeader
+-      label={label}
+-      actions={
++    <header className="av-page-header"><strong>{label === "Object Browser" ? "对象浏览器" : label}</strong>{middleComponent}<span className="av-flex"/>
++      {
+         <Fragment>
++          <DarkModeActivator />
+           {actions}
+-          <DarkModeActivator />
+           <ObjectManagerButton />
+         </Fragment>
+       }
+-      middleComponent={middleComponent}
+-    />
++    </header>
+   );
+ };
+ 
+--- a/web-app/src/screens/Console/Common/SearchBox.tsx
++++ b/web-app/src/screens/Console/Common/SearchBox.tsx
+@@ -40,6 +40,7 @@
+   return (
+     <InputBox
+       placeholder={placeholder}
++      aria-label={label || placeholder}
+       className={overrideClass ? overrideClass : ""}
+       id={id}
+       label={label}
+--- a/web-app/src/screens/Console/ObjectBrowser/BrowserBreadcrumbs.tsx
++++ b/web-app/src/screens/Console/ObjectBrowser/BrowserBreadcrumbs.tsx
+@@ -229,7 +229,7 @@
+ 
+   return (
+     <Fragment>
+-      <BreadcrumbsMain>
++      <BreadcrumbsMain className="av-breadcrumbs">
+         {createFolderOpen && (
+           <CreatePathModal
+             modalOpen={createFolderOpen}
+@@ -308,7 +308,7 @@
+                 whiteSpace: "nowrap",
+               }}
+               variant={"regular"}
+-              label={"Create new path"}
++              label={"新建路径"}
+             />
+           </Tooltip>
+         )}
+--- a/web-app/src/screens/Console/ObjectBrowser/FilterObjectsSB.tsx
++++ b/web-app/src/screens/Console/ObjectBrowser/FilterObjectsSB.tsx
+@@ -28,7 +28,7 @@
+   );
+   return (
+     <SearchBox
+-      placeholder={"Start typing to filter objects in the bucket"}
++      placeholder={"筛选此存储桶中的对象"}
+       onChange={(value) => {
+         dispatch(setSearchObjects(value));
+       }}
+--- a/web-app/src/screens/Console/ObjectBrowser/OBHeader.tsx
++++ b/web-app/src/screens/Console/ObjectBrowser/OBHeader.tsx
+@@ -89,7 +89,7 @@
+               <HelpMenu />
+             </Fragment>
+           }
+-          middleComponent={searchBar}
++          middleComponent={versionsMode ? searchBar : undefined}
+         />
+       ) : (
+         <Grid
+--- a/web-app/public/index.html
++++ b/web-app/public/index.html
+@@ -3,6 +3,7 @@
+   <head>
+     <meta charset="utf-8" />
+     <base href="/" />
++    <script src="%PUBLIC_URL%/appearance-init.js"></script>
+     <meta content="width=device-width, initial-scale=1" name="viewport" />
+     <meta
+       content="#081C42"
+--- a/web-app/src/screens/Console/License/License.tsx
++++ b/web-app/src/screens/Console/License/License.tsx
+@@ -32,7 +32,7 @@
+     <Fragment>
+       <PageHeaderWrapper label="Community and Enterprise Editions" />
+       <PageLayout>
+-        <LicensePlans />
++        <div className="av-license"><LicensePlans /></div>
+       </PageLayout>
+     </Fragment>
+   );
+--- a/web-app/src/screens/Console/Common/ModalWrapper/ModalWrapper.tsx
++++ b/web-app/src/screens/Console/Common/ModalWrapper/ModalWrapper.tsx
+@@ -13,6 +13,7 @@
+ //
+ // You should have received a copy of the GNU Affero General Public License
+ // along with this program.  If not, see <http://www.gnu.org/licenses/>.
++import Icon from "custom/Icon";
+ import React, { useEffect, useState } from "react";
+ import { useSelector } from "react-redux";
+ import { ModalBox, Snackbar } from "mds";
+@@ -90,6 +91,7 @@
+       sx={sx}
+       iconColor={iconColor}
+     >
++      <button type="button" className="av-button av-ghost av-modal-close" aria-label="关闭窗口" onClick={onClose}><Icon name="close" /></button>
+       <MainError isModal={true} />
+       <Snackbar
+         onClose={closeSnackBar}
+--- a/web-app/src/screens/Console/Common/ModalWrapper/ConfirmDialog.tsx
++++ b/web-app/src/screens/Console/Common/ModalWrapper/ConfirmDialog.tsx
+@@ -14,6 +14,7 @@
+ // You should have received a copy of the GNU Affero General Public License
+ // along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
++import Icon from "custom/Icon";
+ import React from "react";
+ import { Box, Button, ModalBox } from "mds";
+
+@@ -68,6 +69,7 @@
+       open={isOpen}
+       customMaxWidth={510}
+     >
++      <button type="button" className="av-button av-ghost av-modal-close" aria-label="关闭窗口" onClick={onClose}><Icon name="close" /></button>
+       <Box>{confirmationContent}</Box>
+       <Box
+         sx={{
+--- a/web-app/src/screens/Console/Console.tsx
++++ b/web-app/src/screens/Console/Console.tsx
+@@ -18,11 +18,9 @@
+   Fragment,
+   Suspense,
+   useEffect,
+-  useLayoutEffect,
+   useState,
+ } from "react";
+-import { MainContainer, ProgressBar, Snackbar } from "mds";
+-import debounce from "lodash/debounce";
++import { ProgressBar, Snackbar } from "mds";
+ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+ import { useSelector } from "react-redux";
+ import { selFeatures, selSession } from "./consoleSlice";
+@@ -36,8 +34,8 @@
+ } from "../../common/SecureComponent/permissions";
+ import { hasPermission } from "../../common/SecureComponent";
+ import { IRouteRule } from "./Menu/types";
+-import { menuOpen, setSnackBarMessage } from "../../systemSlice";
+-import MenuWrapper from "./Menu/MenuWrapper";
++import { setSnackBarMessage } from "../../systemSlice";
++import ConsoleLayout from "../../custom/ConsoleLayout";
+ import LoadingComponent from "../../common/LoadingComponent";
+ import AddBucketModal from "./Buckets/ListBuckets/AddBucket/AddBucketModal";
+
+@@ -54,7 +52,6 @@
+ const Console = () => {
+   const dispatch = useAppDispatch();
+   const { pathname = "" } = useLocation();
+-  const open = useSelector((state: AppState) => state.system.sidebarOpen);
+   const session = useSelector(selSession);
+   const features = useSelector(selFeatures);
+   const snackBarMessage = useSelector(
+@@ -74,22 +71,6 @@
+   useEffect(() => {
+     dispatch({ type: "socket/OBConnect" });
+   }, [dispatch]);
+-
+-  // Layout effect to be executed after last re-render for resizing only
+-  useLayoutEffect(() => {
+-    // Debounce to not execute constantly
+-    const debounceSize = debounce(() => {
+-      if (open && window.innerWidth <= 1024) {
+-        dispatch(menuOpen(false));
+-      }
+-    }, 300);
+-
+-    // Added event listener for window resize
+-    window.addEventListener("resize", debounceSize);
+-
+-    // We remove the listener on component unmount
+-    return () => window.removeEventListener("resize", debounceSize);
+-  });
+
+   const consoleAdminRoutes: IRouteRule[] = [
+     {
+@@ -165,10 +146,7 @@
+   return (
+     <Fragment>
+       {session && session.status === "ok" ? (
+-        <MainContainer
+-          menu={!hideMenu ? <MenuWrapper /> : <Fragment />}
+-          mobileModeAuto={false}
+-        >
++        <ConsoleLayout showNavigation={!hideMenu}>
+           <Fragment>
+             {loadingProgress < 100 && (
+               <ProgressBar
+@@ -217,7 +195,7 @@
+               />
+             </Routes>
+           </Fragment>
+-        </MainContainer>
++        </ConsoleLayout>
+       ) : null}
+     </Fragment>
+   );

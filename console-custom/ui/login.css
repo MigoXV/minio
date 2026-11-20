@@ -1,0 +1,169 @@
+.av-login {
+  min-height: 100dvh;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+.av-login-header {
+  height: 44px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.av-login-header .av-appearance > button {
+  width: 160px;
+}
+.av-login-center {
+  flex: 1;
+  min-height: 440px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.av-login-form {
+  width: 400px;
+  max-width: 100%;
+  height: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin: 0;
+}
+.av-login-title,
+.av-login-credentials {
+  display: contents;
+}
+.av-login h1 {
+  font-size: 24px;
+  line-height: 36px;
+  font-weight: 500;
+  margin: 0;
+  height: 36px;
+  flex: none;
+}
+.av-login-title p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 22px;
+  height: 22px;
+  flex: none;
+}
+.av-login-credentials label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-secondary);
+  height: 66px;
+  flex: none;
+}
+.av-login-credentials .av-field {
+  border-radius: 3px;
+  width: 100%;
+  height: 40px;
+  min-height: 40px;
+}
+.av-login-show {
+  text-align: left;
+  padding: 0;
+  height: 22px;
+  min-height: 22px;
+  line-height: 22px;
+  flex: none;
+}
+.av-login-form > .av-button {
+  width: 100%;
+  height: 40px;
+  min-height: 40px;
+  flex: none;
+  border-radius: 6px;
+}
+.av-login-feedback {
+  height: 44px;
+  flex: none;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-secondary);
+}
+.av-login-feedback p {
+  margin: 0;
+}
+.av-login-feedback[data-state="error"] {
+  color: var(--text-primary);
+}
+.av-login-help {
+  height: 32px;
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+  font-size: 12px;
+  line-height: 18px;
+}
+.av-login-help a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  text-underline-offset: 3px;
+}
+.av-login-help a:hover {
+  text-decoration: underline;
+}
+.av-login-service {
+  width: 400px;
+  max-width: 100%;
+  font-size: 14px;
+  line-height: 22px;
+}
+@media (max-width: 600px) {
+  .av-login {
+    padding: 24px 20px;
+  }
+  .av-login-help {
+    gap: 16px;
+  }
+  .av-login-header .av-appearance > button {
+    width: 148px;
+  }
+}
+
+
+@media (max-width: 600px) {
+  .av-login {
+    padding: 0 16px 24px;
+    gap: 24px;
+  }
+  .av-login-header {
+    height: 52px;
+    margin-inline: -16px;
+    padding-inline: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .av-login-center {
+    align-items: flex-start;
+    min-height: auto;
+    flex: 0;
+  }
+  .av-login-form {
+    height: auto;
+    gap: 16px;
+  }
+  .av-login-form > .av-button {
+    order: 1;
+  }
+  .av-login-feedback {
+    height: auto;
+    min-height: 36px;
+  }
+  .av-login-help {
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+    height: auto;
+  }
+}

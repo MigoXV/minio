@@ -1,0 +1,7 @@
+{
+  "s3Listen": ":9000",
+  "consoleListen": ":9001",
+  "allowedCIDRs": ["<UPSTREAM_LAN_CIDR>", "<WIFI_LAN_CIDR>", "<TEST_HOST_IP>/32", "127.0.0.1/32", "::1/128"],
+  "tlsCert": "certs/server.crt",
+  "tlsKey": "certs/server.key"
+}
