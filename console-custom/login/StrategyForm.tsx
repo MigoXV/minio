@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import React from "react";
+import React, { useState } from "react";
 import { useSelector } from "react-redux";
 import { AppState, useAppDispatch } from "../../store";
 import { setAccessKey, setSecretKey } from "./loginSlice";
 import { doLoginAsync } from "./loginThunks";
 import { RedirectRule } from "api/consoleApi";
-import { Field, PasswordField } from "custom/Field";
+import { Field } from "custom/Field";
 
 export default function StrategyForm(_props: {
   redirectRules: RedirectRule[];
 }) {
   const dispatch = useAppDispatch();
+  const [showPassword, setShowPassword] = useState(false);
   const { accessKey, secretKey, loginSending, loginFailure } = useSelector(
     (s: AppState) => s.login,
   );
@@ -38,6 +39,7 @@ export default function StrategyForm(_props: {
             placeholder="请输入用户名"
             value={accessKey}
             disabled={loginSending}
+            aria-invalid={!!loginFailure}
             required
             aria-describedby="login-feedback"
             onChange={(e) => dispatch(setAccessKey(e.target.value))}
@@ -45,13 +47,15 @@ export default function StrategyForm(_props: {
         </label>
         <label htmlFor="secretKey">
           密码
-          <PasswordField
+          <Field
             id="secretKey"
             name="secretKey"
+            type={showPassword ? "text" : "password"}
             autoComplete="current-password"
             placeholder="请输入密码"
             value={secretKey}
             disabled={loginSending}
+            aria-invalid={!!loginFailure}
             required
             aria-describedby="login-feedback"
             onChange={(e) => dispatch(setSecretKey(e.target.value))}
@@ -59,10 +63,18 @@ export default function StrategyForm(_props: {
         </label>
       </div>
       <button
+        type="button"
+        className="v2-text-button av-login-show"
+        aria-pressed={showPassword}
+        onClick={() => setShowPassword(!showPassword)}
+      >
+        {showPassword ? "隐藏密码" : "显示密码"}
+      </button>
+      <button
         id="do-login"
         type="submit"
         className="av-button av-primary"
-        disabled={!accessKey || !secretKey || loginSending}
+        disabled={loginSending}
       >
         {loginSending ? "登录中…" : "登录"}
       </button>
@@ -76,16 +88,10 @@ export default function StrategyForm(_props: {
         {loginSending ? (
           <>
             <p role="status">正在验证凭据，请稍候。</p>
-            <small>请勿重复提交。</small>
           </>
         ) : loginFailure ? (
           <>
             <p role="alert">{loginFailure.message}</p>
-            <small>
-              {loginFailure.kind === "credentials"
-                ? "仍无法登录，请联系管理员核对凭据。"
-                : "请检查服务状态后重试，或联系管理员。"}
-            </small>
           </>
         ) : (
           <p>使用管理员分配的用户名和密码登录。</p>

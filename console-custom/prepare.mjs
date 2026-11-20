@@ -49,11 +49,14 @@ const consolePath = path.join(workspace, 'web-app/src/screens/Console/Console.ts
 let consoleSource = fs.readFileSync(consolePath, 'utf8');
 const licenseMarker = 'const License = React.lazy(() => import("./License/License"));';
 if (!consoleSource.includes(licenseMarker)) throw new Error('Console route structure changed; rebase management UI');
-consoleSource = consoleSource.replace(licenseMarker, `${licenseMarker}\nconst ManagementWorkspace = React.lazy(() => import("../../custom/ManagementWorkspace"));`);
+consoleSource = consoleSource.replace(licenseMarker, 'const License = React.lazy(() => import("../../custom/LicenseV2"));\nconst ManagementWorkspace = React.lazy(() => import("../../custom/ManagementV2"));');
+consoleSource = consoleSource.replace('const ObjectBrowser = React.lazy(() => import("./ObjectBrowser/ObjectBrowser"));', 'const ObjectBrowser = React.lazy(() => import("../../custom/BrowserWorkspace"));');
 const routeMarker = '    {\n      component: License,';
 if (!consoleSource.includes(routeMarker)) throw new Error('Console route list changed; rebase management UI');
 consoleSource = consoleSource.replace(routeMarker, `    { component: ManagementWorkspace, path: "/manage", forceDisplay: true },\n${routeMarker}`);
 fs.writeFileSync(consolePath, consoleSource);
+// Replace only the frontend consent view; preserve its existing local consent state.
+fs.writeFileSync(path.join(workspace, 'web-app/src/screens/Console/License/LicenseConsentModal.tsx'), 'export {default} from "custom/LicenseConsentV2";\n');
 for (const entry of fs.readdirSync(path.join(custom, 'src'))) {
   fs.copyFileSync(path.join(custom, 'src', entry), path.join(workspace, objects, 'Preview', entry));
 }

@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import React, { useEffect, useRef, useState } from "react";
-import AppearanceMenu, { useAppearance } from "custom/Appearance";
-import Icon from "custom/Icon";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useAppearance } from "custom/Appearance";
+import { V2Icon, Modal, FieldLabel } from "custom/V2";
 import {
   TimeRange,
   clampRange,
   zoomRange,
   preciseTime,
+  frequencyAtHeight,
+  frequencyTicks,
 } from "custom/analysisView";
+import { drawFrequencyRows } from "./spectrogramView";
 import type WaveSurfer from "wavesurfer.js";
 import type SpectrogramPlugin from "wavesurfer.js/dist/plugins/spectrogram.js";
 import {
@@ -67,8 +70,15 @@ const PreviewAudio = ({
 
   const { effective } = useAppearance();
   const [playing, setPlaying] = useState(false);
-  const [volume, setVolume] = useState(1);
+  const [volume, setVolume] = useState(0.8);
+  const [parameters, setParameters] = useState(false);
+  const [draft, setDraft] = useState({
+    fft: 1024,
+    overlap: 0.75,
+    window: "hann",
+  });
   const [selection, setSelection] = useState<TimeRange | null>(null);
+  const [dragSelection, setDragSelection] = useState<TimeRange | null>(null);
   const [view, setView] = useState<TimeRange>([0, 0]);
   const [loop, setLoop] = useState(false);
   const [cursor, setCursor] = useState<{
@@ -76,15 +86,22 @@ const PreviewAudio = ({
     frequency: number;
   } | null>(null);
   const [fft, setFFT] = useState(1024);
+  const [spectrumRevision, setSpectrumRevision] = useState(0);
   const [overlap, setOverlap] = useState(0.75);
   const [windowFunction, setWindowFunction] = useState<"hann" | "hamming">(
     "hann",
   );
-  const drag = useRef<{ x: number; time: number } | null>(null);
+  const drag = useRef<{ id: number; x: number; time: number } | null>(null);
   const viewRef = useRef(view);
-  viewRef.current = view;
-  const loopRef = useRef({ loop, selection });
-  loopRef.current = { loop, selection };
+  const viewWidth = useRef(0);
+  const playbackRange = useRef<TimeRange | null>(null);
+  const playRequest = useRef(0);
+  const loopRef = useRef(loop);
+  const maxHz = Math.min(8000, sampleRate / 2);
+  const frequencyRange = maxHz
+    ? `对数频率 · 0–${maxHz / 1000} kHz`
+    : "对数频率";
+  const ticks = frequencyTicks(maxHz);
   const themeColors = () => {
     const css = getComputedStyle(document.documentElement);
     return {
@@ -93,40 +110,86 @@ const PreviewAudio = ({
       cursorColor: css.getPropertyValue("--text-secondary").trim(),
     };
   };
+  const seek = (position: number) => {
+    if (wave.current) wave.current.setTime(position);
+    else if (audio.current) audio.current.currentTime = position;
+    setTime(position);
+  };
+  const startPlayback = () => {
+    const request = ++playRequest.current;
+    void audio.current?.play().catch((error: DOMException) => {
+      if (request === playRequest.current && error.name !== "AbortError")
+        setPlayError("播放失败，请重试或下载音频。");
+    });
+  };
   const togglePlay = () => {
     const media = audio.current;
     if (!media) return;
-    if (media.paused) {
-      if (
-        loop &&
-        selection &&
-        (media.currentTime < selection[0] || media.currentTime >= selection[1])
-      )
-        media.currentTime = selection[0];
-      void media
-        .play()
-        .catch(() => setPlayError("播放失败，请重试或下载音频。"));
-    } else media.pause();
-  };
-  const setVisible = (range: TimeRange) => {
-    if (!wave.current || !waveform.current || !duration) return;
-    let next = clampRange(range[0], range[1], duration);
-    const minSpan = Math.max(
-      0.05,
-      (duration * wave.current.getWidth()) / 24000,
-    );
-    if (next[1] - next[0] < minSpan) {
-      const start = Math.max(0, Math.min(duration - minSpan, next[0]));
-      next = [start, Math.min(duration, start + minSpan)];
+    if (!media.paused) {
+      media.pause();
+      return;
     }
-    setView(next);
-    viewRef.current = next;
-    wave.current.zoom(
-      wave.current.getWidth() / Math.max(0.05, next[1] - next[0]),
-    );
-    wave.current.setScrollTime(next[0]);
+    playbackRange.current = selection;
+    if (
+      selection &&
+      (media.currentTime < selection[0] || media.currentTime >= selection[1])
+    )
+      seek(selection[0]);
+    startPlayback();
   };
+  const syncPlayback = useCallback(() => {
+    const media = audio.current;
+    if (!media) return;
+    const range = playbackRange.current;
+    if (
+      range &&
+      (!media.paused || media.ended) &&
+      media.currentTime >= range[1]
+    ) {
+      if (loopRef.current) {
+        media.currentTime = range[0];
+        if (media.paused) void media.play().catch(() => setPlaying(false));
+      } else {
+        media.pause();
+        media.currentTime = range[1];
+        setPlaying(false);
+      }
+    }
+    setTime(media.currentTime);
+  }, []);
+  useEffect(() => {
+    if (!playing) return;
+    let frame: number;
+    const update = () => {
+      syncPlayback();
+      if (audio.current && !audio.current.paused)
+        frame = requestAnimationFrame(update);
+    };
+    frame = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(frame);
+  }, [playing, syncPlayback]);
+  const setVisible = useCallback(
+    (range: TimeRange) => {
+      if (!wave.current || !waveform.current || !duration) return;
+      const width = wave.current.getWidth();
+      if (!width) return;
+      let next = clampRange(range[0], range[1], duration);
+      const minSpan = Math.max(0.05, (duration * width) / 24000);
+      if (next[1] - next[0] < minSpan) {
+        const start = Math.max(0, Math.min(duration - minSpan, next[0]));
+        next = [start, Math.min(duration, start + minSpan)];
+      }
+      setView(next);
+      viewRef.current = next;
+      viewWidth.current = width;
+      wave.current.zoom(width / Math.max(0.05, next[1] - next[0]));
+      wave.current.setScrollTime(next[0]);
+    },
+    [duration],
+  );
   const clearSelection = () => {
+    playbackRange.current = null;
+    loopRef.current = false;
     setSelection(null);
     setLoop(false);
   };
@@ -146,43 +209,61 @@ const PreviewAudio = ({
     return {
       time: range[0] + fraction * (range[1] - range[0]),
       frequency: event.currentTarget.classList.contains("av-spectrum")
-        ? Math.max(
-            0,
-            Math.min(
-              sampleRate / 2,
-              ((1 - (event.clientY - rect.top) / rect.height) * sampleRate) / 2,
-            ),
-          )
+        ? frequencyAtHeight((event.clientY - rect.top) / rect.height, maxHz)
         : (cursor?.frequency ?? NaN),
     };
   };
+  const cancelDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (drag.current?.id !== event.pointerId) return;
+    drag.current = null;
+    setDragSelection(null);
+  };
   const chartEvents = {
     onPointerDownCapture: (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!expanded || e.button !== 0) return;
+      if (!expanded || wavePhase !== "ready" || !e.isPrimary || e.button !== 0)
+        return;
       e.preventDefault();
       e.stopPropagation();
-      drag.current = { x: e.clientX, time: coordinate(e).time };
+      drag.current = {
+        id: e.pointerId,
+        x: e.clientX,
+        time: coordinate(e).time,
+      };
       e.currentTarget.setPointerCapture(e.pointerId);
     },
     onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => {
       if (!expanded) return;
       const point = coordinate(e);
       setCursor(point);
-      if (drag.current && Math.abs(e.clientX - drag.current.x) > 4)
-        setSelection(clampRange(drag.current.time, point.time, duration));
+      const start = drag.current;
+      if (start?.id === e.pointerId) {
+        setDragSelection(
+          Math.abs(e.clientX - start.x) > 4
+            ? clampRange(start.time, point.time, duration)
+            : null,
+        );
+      }
     },
     onPointerUpCapture: (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!expanded || !drag.current) return;
+      const start = drag.current;
+      if (start?.id !== e.pointerId) return;
       e.stopPropagation();
-      if (Math.abs(e.clientX - drag.current.x) <= 4 && audio.current)
-        audio.current.currentTime = coordinate(e).time;
+      const position = coordinate(e).time;
       drag.current = null;
-      if (e.currentTarget.hasPointerCapture(e.pointerId))
-        e.currentTarget.releasePointerCapture(e.pointerId);
+      setDragSelection(null);
+      const range = clampRange(start.time, position, duration);
+      if (Math.abs(e.clientX - start.x) > 4 && range[1] > range[0]) {
+        playbackRange.current = range;
+        setSelection(range);
+        seek(range[0]);
+        startPlayback();
+      } else {
+        playbackRange.current = null;
+        seek(position);
+      }
     },
-    onPointerCancel: () => {
-      drag.current = null;
-    },
+    onPointerCancel: cancelDrag,
+    onLostPointerCapture: cancelDrag,
     onClickCapture: (e: React.MouseEvent) => {
       if (expanded) e.stopPropagation();
     },
@@ -191,32 +272,35 @@ const PreviewAudio = ({
     if (wavePhase === "ready") wave.current?.setOptions(themeColors());
   }, [effective, wavePhase]);
   useEffect(() => {
-    const element = waveform.current;
+    const element = waveform.current?.parentElement;
+    const spectrogramPlot = spectrum.current?.parentElement;
     if (!element || !expanded) return;
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
       const rect = element.getBoundingClientRect(),
-        range = viewRef.current;
+        range = viewRef.current,
+        duration = durationRef.current;
       const anchor =
         range[0] +
         ((e.clientX - rect.left) / rect.width) * (range[1] - range[0]);
       setVisible(zoomRange(range, anchor, e.deltaY > 0 ? 1.25 : 0.8, duration));
     };
     element.addEventListener("wheel", wheel, { passive: false });
-    spectrum.current?.addEventListener("wheel", wheel, { passive: false });
-    const sp = spectrum.current;
+    spectrogramPlot?.addEventListener("wheel", wheel, { passive: false });
     return () => {
       element.removeEventListener("wheel", wheel);
-      sp?.removeEventListener("wheel", wheel);
+      spectrogramPlot?.removeEventListener("wheel", wheel);
     };
     // View is read from a ref to avoid replacing the handler while scrolling.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expanded, duration]);
+  }, [expanded, setVisible]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (
         e.code !== "Space" ||
-        /INPUT|SELECT|TEXTAREA|BUTTON/.test((e.target as HTMLElement).tagName)
+        (e.target as HTMLElement).closest(
+          "input, select, textarea, button, a",
+        ) ||
+        waveform.current?.closest("[inert]")
       )
         return;
       e.preventDefault();
@@ -264,10 +348,11 @@ const PreviewAudio = ({
         instance = WaveSurferClass.create({
           container: waveform.current!,
           media: document.createElement("audio"),
-          height: window.innerHeight <= 800 ? 88 : 120,
+          height: "auto",
           ...themeColors(),
           autoScroll: false,
           autoCenter: false,
+          hideScrollbar: true,
           normalize: true,
           sampleRate: 48000,
         });
@@ -279,21 +364,15 @@ const PreviewAudio = ({
             spectrum.current.style.transform = `translateX(-${instance.getScroll()}px)`;
           }
         };
+        const renderer = instance;
         instance.on("scroll", (start, end) => {
-          setView([start, end]);
+          // A wider viewport can clamp scroll before the resize observer reapplies zoom.
+          if (renderer.getWidth() !== viewWidth.current) return;
+          viewRef.current = [start, end];
+          setView(viewRef.current);
           syncSpectrum();
         });
         instance.on("redrawcomplete", syncSpectrum);
-        instance.on("audioprocess", (position) => {
-          const { loop, selection } = loopRef.current;
-          if (
-            loop &&
-            selection &&
-            position >= selection[1] &&
-            media.currentTime >= selection[1]
-          )
-            media.currentTime = selection[0];
-        });
         await instance.loadBlob(blob, undefined, durationRef.current);
         if (disposed) return;
         const decoded = instance.getDecodedData();
@@ -307,7 +386,9 @@ const PreviewAudio = ({
         const decodedLimit = analysisLimit(blob.size, decoded.duration);
         if (decodedLimit) throw new Error(decodedLimit);
         setSampleRate(decoded.sampleRate);
-        setView([0, decoded.duration]);
+        viewRef.current = [0, decoded.duration];
+        viewWidth.current = instance.getWidth();
+        setView(viewRef.current);
         media.playbackRate = playbackRate;
         if (position > 0)
           media.currentTime = Math.min(position, decoded.duration);
@@ -374,28 +455,27 @@ const PreviewAudio = ({
     import("wavesurfer.js/dist/plugins/spectrogram.js")
       .then(({ default: Plugin }) => {
         if (disposed || !wave.current || !spectrum.current) return;
-        const plugin = Plugin.create({
+        const options = {
           container: spectrum.current,
-          height: 260,
+          height: 224,
           labels: false,
           fftSamples: fft,
           noverlap: Math.round(fft * overlap),
           windowFunc: windowFunction,
-          scale: "linear",
+          scale: "linear" as const,
           frequencyMin: 0,
-          frequencyMax: sampleRate / 2,
+          frequencyMax: maxHz,
+          drawFrequencyRows,
           useWebWorker: true,
           splitChannels: false,
-        });
+        };
+        const plugin = Plugin.create(options);
         spectrogram.current = plugin;
         plugin.on("ready", () => {
           if (disposed) return;
           clearTimeout(timer);
           phase("ready");
         });
-        plugin.on("click", (position: number) =>
-          wave.current?.seekTo(position),
-        );
         timer = setTimeout(
           () => fail("频谱计算超时，请收起后重新展开重试。"),
           60000,
@@ -415,16 +495,31 @@ const PreviewAudio = ({
         setSpectrumPhase("idle");
       }
     };
-  }, [expanded, wavePhase, sampleRate, fft, overlap, windowFunction]);
+  }, [
+    expanded,
+    wavePhase,
+    maxHz,
+    fft,
+    overlap,
+    windowFunction,
+    spectrumRevision,
+  ]);
 
   useEffect(() => {
-    const resize = () =>
-      wave.current?.setOptions({
-        height: window.innerHeight <= 800 ? 88 : 120,
-      });
-    window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
-  }, []);
+    const chart = waveform.current;
+    if (!chart || wavePhase !== "ready") return;
+    let width = chart.clientWidth;
+    const observer = new ResizeObserver(() => {
+      const nextWidth = chart.clientWidth;
+      if (!nextWidth || nextWidth === width) return;
+      width = nextWidth;
+      // WaveSurfer zoom is measured in pixels per second. Reapply the visible
+      // interval so a new plot width does not shift the time range.
+      setVisible(viewRef.current);
+    });
+    observer.observe(chart);
+    return () => observer.disconnect();
+  }, [setVisible, wavePhase]);
 
   useEffect(() => {
     const media = audio.current;
@@ -436,16 +531,24 @@ const PreviewAudio = ({
   }, []);
 
   const span = view[1] - view[0] || duration || 1;
+  const zoomed = view[0] > 0.01 || view[1] < duration - 0.01;
+  const intervals = zoomed ? 4 : 6;
+  const visibleSelection = dragSelection ?? selection;
+  const panEnd = Math.max(0, duration - span);
+  const pan = (start: number) => {
+    wave.current?.setScrollTime(Math.max(0, Math.min(panEnd, start)));
+    setCursor(null);
+  };
   const marker = (position: number) =>
     `${Math.max(0, Math.min(100, ((position - view[0]) / span) * 100))}%`;
   const overlay = (
     <div className="av-chart-overlay" aria-hidden="true">
-      {selection && (
+      {visibleSelection && (
         <div
           className="av-selection"
           style={{
-            left: marker(selection[0]),
-            width: `${(Math.max(0, Math.min(view[1], selection[1]) - Math.max(view[0], selection[0])) / span) * 100}%`,
+            left: marker(visibleSelection[0]),
+            width: `${(Math.max(0, Math.min(view[1], visibleSelection[1]) - Math.max(view[0], visibleSelection[0])) / span) * 100}%`,
           }}
         />
       )}
@@ -454,79 +557,118 @@ const PreviewAudio = ({
   );
   const axis = (
     <div className="av-time-axis">
-      {Array.from({ length: 7 }, (_, i) => (
-        <span key={i}>
-          {expanded
-            ? preciseTime(view[0] + (span * i) / 6)
-            : formatAudioTime((duration * i) / 6)}
-        </span>
-      ))}
+      {Array.from({ length: intervals + 1 }, (_, i) => {
+        const offset = i / intervals;
+        const position = view[0] + span * offset;
+        return (
+          <span key={i} style={{ left: `${100 * offset}%` }}>
+            {zoomed
+              ? position.toFixed(3) + " s"
+              : span < intervals
+                ? position.toFixed(2) + " s"
+                : formatAudioTime(position)}
+          </span>
+        );
+      })}
     </div>
   );
-  const controls = (
-    <div className="av-transport">
-      <button
-        className="av-button av-primary av-playback-toggle"
-        onClick={togglePlay}
-        disabled={!metadataReady || !!playError}
-        aria-label={playing ? "暂停" : "播放"}
-      >
-        <span className="av-playback-icon" aria-hidden="true">
-          {playing ? (
-            <span className="av-pause-icon">
-              <i />
-              <i />
-            </span>
-          ) : (
-            <Icon name="play" />
-          )}
+  return (
+    <div
+      className={`av-audio v2-audio ${expanded ? "av-expanded" : ""}`}
+      style={
+        { "--time-grid-step": `${100 / intervals}%` } as React.CSSProperties
+      }
+      data-testid="audio-preview"
+      aria-label="音频预览"
+    >
+      <div className="v2-tabs" role="tablist" aria-label="音频工作区">
+        <button
+          role="tab"
+          aria-selected={!expanded}
+          onClick={() => setExpanded(false)}
+        >
+          试听
+        </button>
+        <button
+          role="tab"
+          aria-selected={expanded}
+          onClick={() => setExpanded(true)}
+        >
+          音频分析
+        </button>
+      </div>
+      <audio
+        ref={audio}
+        src={path}
+        preload="metadata"
+        controls={wavePhase === "error" || !!playError}
+        style={{
+          display: wavePhase === "error" || playError ? "block" : "none",
+          width: "100%",
+        }}
+        onLoadedMetadata={() => {
+          const value = audio.current?.duration || 0;
+          durationRef.current = value;
+          setDuration(value);
+          if (audio.current) {
+            audio.current.playbackRate = rate;
+            audio.current.volume = volume;
+          }
+          setMetadataReady(true);
+          onLoadRef.current();
+        }}
+        onTimeUpdate={syncPlayback}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => {
+          syncPlayback();
+          if (audio.current?.ended) setPlaying(false);
+        }}
+        onVolumeChange={() => setVolume(audio.current?.volume ?? 1)}
+        onCanPlay={() => {
+          setPlayError("");
+          onLoadRef.current();
+        }}
+        onError={() => {
+          setPlayError(
+            "浏览器无法播放此音频编码，或文件无法读取。请尝试下载后使用其他播放器打开。",
+          );
+          onLoadRef.current();
+        }}
+      />
+
+      {playError && <p role="alert">{playError}</p>}
+      {notice && <p role="status">{notice}</p>}
+      <div className="v2-transport">
+        <button
+          className="av-button av-primary av-playback-toggle"
+          onClick={togglePlay}
+          disabled={!metadataReady || !!playError}
+          aria-label={playing ? "暂停" : "播放"}
+        >
+          {playing ? "暂停" : "播放"}
+        </button>
+        <span className="v2-position" data-testid="audio-position">
+          {preciseTime(time)} / {preciseTime(duration)}
         </span>
-        {playing ? "暂停" : "播放"}
-      </button>
-      <span className="av-position" data-testid="audio-position">
-        {expanded ? preciseTime(time) : formatAudioTime(time)}{" "}
-        <small>
-          / {expanded ? preciseTime(duration) : formatAudioTime(duration)}
-        </small>
-      </span>
-      {expanded && (
-        <>
-          <button
-            className="av-button"
-            disabled={!selection}
-            aria-pressed={loop}
-            onClick={() => setLoop(!loop)}
-          >
-            循环选区
-          </button>
-          <button
-            className="av-button"
-            disabled={!selection}
-            onClick={() => selection && setVisible(selection)}
-          >
-            缩放至选区
-          </button>
-        </>
-      )}
-      <span className="av-flex" />
-      <label className="av-volume">
-        <Icon name="volume" />
-        <input
-          aria-label="音量"
-          type="range"
-          min="0"
-          max="1"
-          step="0.01"
-          value={volume}
-          onChange={(e) => {
-            setVolume(Number(e.target.value));
-            if (audio.current) audio.current.volume = Number(e.target.value);
-          }}
-        />
-      </label>
-      <label className="av-speed">
-        {!expanded && "播放速度"}{" "}
+        <label className="v2-volume">
+          <V2Icon name="volume" />
+          <span>音量 {Math.round(volume * 100)}%</span>
+          <input
+            aria-label="音量"
+            type="range"
+            min="0"
+            max="1"
+            step=".01"
+            value={volume}
+            onChange={(e) => {
+              setVolume(Number(e.target.value));
+              if (audio.current) audio.current.volume = Number(e.target.value);
+            }}
+          />
+        </label>
         <select
+          className="v2-speed v2-select"
           aria-label="播放速度"
           value={rate}
           onChange={(e) => {
@@ -541,78 +683,38 @@ const PreviewAudio = ({
             </option>
           ))}
         </select>
-      </label>
-      <button className="av-button" id="audio-download" onClick={downloadFile}>
-        <Icon name="download" />
-        {expanded ? "下载" : "下载音频"}
-      </button>
-    </div>
-  );
-  return (
-    <div
-      className={`av-audio ${expanded ? "av-expanded" : ""}`}
-      data-testid="audio-preview"
-      aria-label="音频预览"
-    >
-      <header className="av-audio-heading">
-        <Icon name="audio" />
-        <div>
-          <strong>{name}</strong>
-          <small>
-            {bucket} / {name} ·{" "}
-            {size ? (size / 1048576).toFixed(2) + " MiB" : ""}
-          </small>
-        </div>
         <span className="av-flex" />
-        <AppearanceMenu />
-      </header>
-      <audio
-        ref={audio}
-        src={path}
-        preload="metadata"
-        controls={wavePhase === "error" || !!playError}
-        style={{
-          display: wavePhase === "error" || playError ? "block" : "none",
-          width: "100%",
-        }}
-        onLoadedMetadata={() => {
-          const value = audio.current?.duration || 0;
-          durationRef.current = value;
-          setDuration(value);
-          if (audio.current) audio.current.playbackRate = rate;
-          setMetadataReady(true);
-          onLoadRef.current();
-        }}
-        onTimeUpdate={() => {
-          const media = audio.current;
-          if (!media) return;
-          if (loop && selection && media.currentTime >= selection[1])
-            media.currentTime = selection[0];
-          setTime(media.currentTime);
-        }}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onEnded={() => {
-          if (loop && selection && audio.current) {
-            audio.current.currentTime = selection[0];
-            void audio.current.play().catch(() => {});
-          } else setPlaying(false);
-        }}
-        onVolumeChange={() => setVolume(audio.current?.volume ?? 1)}
-        onCanPlay={() => {
-          setPlayError("");
-          onLoadRef.current();
-        }}
-        onError={() => {
-          setPlayError(
-            "浏览器无法播放此音频编码，或文件无法读取。请尝试下载后使用其他播放器打开。",
-          );
-          onLoadRef.current();
-        }}
-      />
-      {playError && <p role="alert">{playError}</p>}
-      {notice && <p role="status">{notice}</p>}
-      {expanded && controls}
+        {expanded && (
+          <>
+            <button
+              className="av-button av-ghost"
+              disabled={!selection}
+              aria-pressed={loop}
+              onClick={() => {
+                loopRef.current = !loop;
+                setLoop(!loop);
+              }}
+            >
+              循环选区
+            </button>
+            <button
+              className="av-button"
+              disabled={!selection}
+              onClick={() => selection && setVisible(selection)}
+            >
+              缩放至选区
+            </button>
+            {zoomed && (
+              <button
+                className="av-button av-ghost"
+                onClick={() => setVisible([0, duration])}
+              >
+                显示全段
+              </button>
+            )}
+          </>
+        )}
+      </div>
       <div className="av-analysis-grid">
         <div className="av-plots">
           <div
@@ -620,24 +722,18 @@ const PreviewAudio = ({
             style={{ display: wavePhase === "error" ? "none" : "block" }}
           >
             <div className="av-chart-title">
-              <span>
-                波形 <small>{expanded ? "归一化振幅" : ""}</small>
-              </span>
-              <small>
-                {expanded ? "声道 1" : `00:00 — ${formatAudioTime(duration)}`}
-              </small>
+              <span>波形</span>
+              <small>归一化振幅 · 声道 1</small>
             </div>
             {wavePhase !== "ready" && size <= MAX_AUDIO_BYTES && (
               <p role="status">正在加载波形…</p>
             )}
             <div className="av-chart-row">
-              {expanded && (
-                <div className="av-y-axis">
-                  <span>+1</span>
-                  <span>0</span>
-                  <span>−1</span>
-                </div>
-              )}
+              <div className="av-y-axis">
+                <span>+1</span>
+                <span>0</span>
+                <span>−1</span>
+              </div>
               <div className="av-chart" {...chartEvents}>
                 <div
                   ref={waveform}
@@ -648,97 +744,107 @@ const PreviewAudio = ({
               </div>
             </div>
             {axis}
+            {zoomed && panEnd > 0.01 && (
+              <input
+                type="range"
+                className="av-time-scroll"
+                aria-label="平移时间窗口"
+                aria-valuetext={`${preciseTime(view[0])} – ${preciseTime(view[1])}`}
+                min={0}
+                max={panEnd}
+                step="any"
+                value={Math.min(panEnd, view[0])}
+                style={
+                  {
+                    "--time-thumb-width": `${(100 * span) / duration}%`,
+                  } as React.CSSProperties
+                }
+                onChange={(event) => pan(event.currentTarget.valueAsNumber)}
+                onKeyDown={(event) => {
+                  const positions: Record<string, number> = {
+                    ArrowLeft: view[0] - 0.05 * span,
+                    ArrowDown: view[0] - 0.05 * span,
+                    ArrowRight: view[0] + 0.05 * span,
+                    ArrowUp: view[0] + 0.05 * span,
+                    PageDown: view[0] - span,
+                    PageUp: view[0] + span,
+                    Home: 0,
+                    End: panEnd,
+                  };
+                  if (!(event.key in positions)) return;
+                  event.preventDefault();
+                  pan(positions[event.key]);
+                }}
+              />
+            )}
           </div>
-          {!expanded && controls}
-          {wavePhase === "ready" && (
+          {!expanded && (
             <>
-              <div className="av-spectrum-title">
-                <span>
-                  频谱{!expanded && "图"}{" "}
-                  <small>
-                    {expanded ? "线性频率 · 相对能量" : "仅在展开后计算"}
-                  </small>
-                </span>
-                {expanded && (
-                  <button
-                    className="av-button av-ghost"
-                    onClick={() => setVisible([0, duration])}
-                  >
-                    显示全段
-                  </button>
-                )}
-                <button
-                  className="av-button av-ghost"
-                  aria-expanded={expanded}
-                  aria-controls="audio-spectrogram"
-                  onClick={() => setExpanded(!expanded)}
-                >
-                  {expanded ? "收起频谱图" : "展开频谱图"}
-                </button>
-              </div>
-              <div id="audio-spectrogram" hidden={!expanded}>
-                {spectrumPhase === "loading" && (
-                  <p role="status">正在计算频谱图…</p>
-                )}
-                {spectrumError && <p role="alert">{spectrumError}</p>}
-                <div className="av-chart-row">
-                  <div className="av-y-axis">
-                    {[1, 0.75, 0.5, 0.25, 0].map((v) => (
-                      <span key={v}>
-                        {v
-                          ? `${((sampleRate / 2000) * v).toFixed(1)}k`
-                          : "0 Hz"}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="av-chart av-spectrum" {...chartEvents}>
-                    <div
-                      ref={spectrum}
-                      data-testid="audio-spectrogram-canvas"
-                    />
-                    {overlay}
-                  </div>
+              <p className="v2-wave-tip">点击波形定位；空格键播放或暂停。</p>
+              <div className="v2-analysis-invite">
+                <div>
+                  <h3>需要查看频率与时间选区？</h3>
+                  <p>频谱仅在进入音频分析后计算。</p>
                 </div>
-                {axis}
-                {spectrumPhase === "ready" && (
-                  <>
-                    <div className="av-spectrum-legend">
-                      <span>弱</span>
-                      <i />
-                      <span>强</span>
-                      <span>相对强度 · 未标定绝对电平</span>
-                    </div>
-                    <p className="av-analysis-caption">
-                      频率：0–{Math.round(sampleRate / 2)} Hz · 声道 1 ·{" "}
-                      {windowFunction === "hann" ? "Hann" : "Hamming"} / FFT{" "}
-                      {fft}
-                    </p>
-                  </>
-                )}
-                <p className="av-analysis-caption">
-                  拖拽选择时间段 · 双图同步定位 · 滚轮缩放时间轴
-                </p>
+                <button
+                  className="av-button"
+                  onClick={() => setExpanded(true)}
+                  disabled={wavePhase !== "ready"}
+                >
+                  展开频谱图
+                </button>
               </div>
             </>
           )}
+          <div id="audio-spectrogram" hidden={!expanded}>
+            <div className="av-spectrum-title">
+              <span>频谱</span>
+              <small>{frequencyRange}</small>
+            </div>
+            {spectrumPhase === "loading" && <p role="status">正在计算频谱</p>}
+            {spectrumError && (
+              <p role="alert">
+                {spectrumError}{" "}
+                <button
+                  className="v2-text-button"
+                  onClick={() => {
+                    invalidateSpectrum();
+                    setSpectrumError("");
+                    setExpanded(false);
+                    setTimeout(() => setExpanded(true), 0);
+                  }}
+                >
+                  重试
+                </button>
+              </p>
+            )}
+            <div className="av-chart-row">
+              <div className="av-y-axis av-frequency-axis">
+                {ticks.map(({ hz, top }) => (
+                  <span key={hz} data-frequency={hz} style={{ top: top + "%" }}>
+                    {hz >= 1000 ? `${hz / 1000}k` : hz || "0 Hz"}
+                  </span>
+                ))}
+              </div>
+              <div className="av-chart av-spectrum" {...chartEvents}>
+                <div ref={spectrum} data-testid="audio-spectrogram-canvas" />
+                <div className="av-frequency-grid" aria-hidden="true">
+                  {ticks.slice(1, -1).map(({ hz, top }) => (
+                    <span
+                      key={hz}
+                      data-frequency={hz}
+                      style={{ top: top + "%" }}
+                    />
+                  ))}
+                </div>
+                {overlay}
+              </div>
+            </div>
+            {axis}
+          </div>
         </div>
         {expanded && (
           <aside className="av-analysis-inspector">
-            <section>
-              <h3>游标读数</h3>
-              <dl>
-                <dt>时间</dt>
-                <dd>{preciseTime(cursor?.time ?? time)}</dd>
-                <dt>频率</dt>
-                <dd>
-                  {cursor && Number.isFinite(cursor.frequency)
-                    ? `${(cursor.frequency / 1000).toFixed(2)} kHz`
-                    : "—"}
-                </dd>
-                <dt>绝对电平</dt>
-                <dd>— dBFS</dd>
-              </dl>
-            </section>
             <section>
               <h3>时间选区</h3>
               <dl>
@@ -753,7 +859,7 @@ const PreviewAudio = ({
                 <dt>时长</dt>
                 <dd>
                   {selection
-                    ? `${(selection[1] - selection[0]).toFixed(3)} s`
+                    ? (selection[1] - selection[0]).toFixed(3) + " s"
                     : "—"}
                 </dd>
               </dl>
@@ -766,66 +872,114 @@ const PreviewAudio = ({
               </button>
             </section>
             <section>
+              <h3>游标读数</h3>
+              <p className="v2-cursor-reading">
+                {preciseTime(cursor?.time ?? time)} ·{" "}
+                {cursor && Number.isFinite(cursor.frequency)
+                  ? cursor.frequency >= 1000
+                    ? (cursor.frequency / 1000).toFixed(2) + " kHz"
+                    : Math.round(cursor.frequency) + " Hz"
+                  : "—"}{" "}
+                · — dBFS
+              </p>
+            </section>
+            <section>
               <h3>分析参数</h3>
-              <label>
-                FFT
-                <select
-                  aria-label="FFT"
-                  value={fft}
-                  onChange={(e) => {
-                    invalidateSpectrum();
-                    setFFT(Number(e.target.value));
-                  }}
-                >
-                  {[512, 1024, 2048].map((v) => (
-                    <option key={v}>{v}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                窗函数
-                <select
-                  aria-label="窗函数"
-                  value={windowFunction}
-                  onChange={(e) => {
-                    invalidateSpectrum();
-                    setWindowFunction(e.target.value as "hann" | "hamming");
-                  }}
-                >
-                  <option value="hann">汉宁窗</option>
-                  <option value="hamming">海明窗</option>
-                </select>
-              </label>
-              <label>
-                重叠
-                <select
-                  aria-label="重叠"
-                  value={overlap}
-                  onChange={(e) => {
-                    invalidateSpectrum();
-                    setOverlap(Number(e.target.value));
-                  }}
-                >
-                  <option value="0.5">50%</option>
-                  <option value="0.75">75%</option>
-                </select>
-              </label>
-              <label>
-                频率轴<span>线性 Hz</span>
-              </label>
-              <p>选中频率从原音频计算。图像颜色不能替代 dBFS 读数。</p>
+              <p>
+                FFT {fft} · {windowFunction === "hann" ? "汉宁窗" : "海明窗"}
+              </p>
+              <p>
+                重叠 {overlap * 100}% · {frequencyRange}
+              </p>
+              <button
+                className="av-button"
+                onClick={() => {
+                  setDraft({ fft, overlap, window: windowFunction });
+                  setParameters(true);
+                }}
+              >
+                调整参数
+              </button>
             </section>
           </aside>
         )}
       </div>
       <footer className="av-audio-footer">
-        <span>
-          {expanded
-            ? "音频分析 · 选区只影响试听与分析"
-            : "点击波形跳转播放位置。"}
-        </span>
-        {expanded && <span>空格键 播放 / 暂停 · Esc 关闭</span>}
+        {expanded
+          ? "拖出选区，松手即播放 · 双图同步定位 · 滚轮缩放时间轴 · 相对强度未标定绝对电平"
+          : "试听不修改原文件。"}
       </footer>
+      {parameters && (
+        <Modal
+          title="分析参数"
+          description="参数只影响当前频谱计算。"
+          onClose={() => setParameters(false)}
+          footer={
+            <>
+              <button
+                className="av-button"
+                onClick={() => setParameters(false)}
+              >
+                取消
+              </button>
+              <button
+                className="av-button av-primary"
+                onClick={() => {
+                  invalidateSpectrum();
+                  setFFT(draft.fft);
+                  setOverlap(draft.overlap);
+                  setWindowFunction(draft.window as "hann" | "hamming");
+                  setSpectrumRevision((revision) => revision + 1);
+                  setParameters(false);
+                }}
+              >
+                重新计算
+              </button>
+            </>
+          }
+        >
+          <FieldLabel label="FFT">
+            <select
+              className="v2-select"
+              value={draft.fft}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, fft: Number(e.target.value) }))
+              }
+            >
+              {[512, 1024, 2048].map((v) => (
+                <option key={v}>{v}</option>
+              ))}
+            </select>
+          </FieldLabel>
+          <FieldLabel label="窗函数">
+            <select
+              className="v2-select"
+              value={draft.window}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, window: e.target.value }))
+              }
+            >
+              <option value="hann">汉宁窗</option>
+              <option value="hamming">海明窗</option>
+            </select>
+          </FieldLabel>
+          <FieldLabel label="重叠">
+            <select
+              className="v2-select"
+              value={draft.overlap}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, overlap: Number(e.target.value) }))
+              }
+            >
+              <option value="0.5">50%</option>
+              <option value="0.75">75%</option>
+            </select>
+          </FieldLabel>
+          <FieldLabel label="频率轴">
+            <input className="av-field" readOnly value="线性 Hz" />
+          </FieldLabel>
+        </Modal>
+      )}
     </div>
   );
 };

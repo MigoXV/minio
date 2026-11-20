@@ -1,0 +1,44 @@
+.v2-workspace-popover {
+  position: fixed;
+  inset: auto;
+  width: max-content;
+  min-width: min(186px, calc(100vw - 16px));
+  max-width: min(360px, calc(100vw - 16px));
+  padding: 4px;
+  margin: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text-primary);
+  box-shadow: 0 5px 12px rgb(0 0 0 / 14%);
+}
+.v2-workspace-popover button,
+.v2-workspace-popover a {
+  display: flex;
+  width: 100%;
+  min-height: 32px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  text-decoration: none;
+  white-space: normal;
+}
+.v2-workspace-popover p {
+  padding: 4px 8px;
+  margin: 0;
+  color: var(--text-secondary);
+}
+.v2-workspace-popover button:disabled {
+  opacity: 0.5;
+}
+.v2-workspace-popover button:hover:not(:disabled),
+.v2-workspace-popover button[aria-current] {
+  background: var(--selected);
+}

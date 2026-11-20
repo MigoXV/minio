@@ -9,7 +9,6 @@ import { resetForm } from "./loginSlice";
 import { loginStrategyType } from "./login.types";
 import StrategyForm from "./StrategyForm";
 import AppearanceMenu from "custom/Appearance";
-import logo from "custom/assets/minio-logo.svg";
 import "custom/login.css";
 
 export const getTargetPath = () => {
@@ -37,14 +36,8 @@ export default function Login() {
   return (
     <main className="av-login" aria-label="登录控制台">
       <header className="av-login-header">
-        <img
-          className="av-login-logo"
-          src={logo}
-          alt="MinIO"
-          width="120"
-          height="21"
-        />
-        <AppearanceMenu />
+        <div className="v2-brand">MinIO</div>
+        <AppearanceMenu compact />
       </header>
       <div className="av-login-center">
         {loginStrategy.loginStrategy === loginStrategyType.form ? (

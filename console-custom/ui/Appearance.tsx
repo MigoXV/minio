@@ -13,7 +13,9 @@ import "./tokens.css";
 import "./workspace.css";
 import "./fields.css";
 import "./license.css";
+import "./v2.css";
 import Icon from "./Icon";
+import { PageHeader, V2Icon } from "./V2";
 type Preference = "system" | "vallum" | "abyssus";
 const labels = {
   system: "跟随系统",
@@ -24,7 +26,11 @@ const Context = createContext<{
   preference: Preference;
   effective: "vallum" | "abyssus";
   choose: (p: Preference) => void;
-}>({ preference: "system", effective: "vallum", choose: () => {} });
+}>({
+  preference: "system",
+  effective: "vallum",
+  choose: () => {},
+});
 export const useAppearance = () => useContext(Context);
 const css = (name: string) => `var(--${name})`;
 function adaptTheme(base: any): any {
@@ -127,12 +133,60 @@ export function AppearanceProvider({
     } catch {}
   };
   return (
-    <Context.Provider value={{ preference, effective, choose }}>
+    <Context.Provider
+      value={{
+        preference,
+        effective,
+        choose,
+      }}
+    >
       <ThemeProvider theme={adaptTheme}>{children}</ThemeProvider>
     </Context.Provider>
   );
 }
-export default function AppearanceMenu() {
+export function AppearancePage() {
+  const { preference, choose } = useAppearance();
+  return (
+    <main className="v2-page v2-appearance-page">
+      <PageHeader title="外观" description="选择适合当前环境的界面主题。" />
+      <div className="v2-appearance-options">
+        {(["vallum", "abyssus", "system"] as Preference[]).map((p) => (
+          <button
+            key={p}
+            aria-pressed={preference === p}
+            onClick={() => choose(p)}
+          >
+            <V2Icon
+              size={20}
+              name={
+                p === "vallum" ? "sun" : p === "abyssus" ? "settings" : "grid"
+              }
+            />
+            <div>
+              <span>{labels[p]}</span>
+              <small>
+                {p === "system"
+                  ? "随设备外观自动切换。"
+                  : p === "vallum"
+                    ? "温和的石素背景，适合日常管理。"
+                    : "深渊与夜海层次，适合低光环境。"}
+              </small>
+            </div>
+            {preference === p && <V2Icon name="check" />}
+          </button>
+        ))}
+      </div>
+      <p className="v2-muted">
+        切换主题保留当前对象、播放位置、音量、倍速与时间选区。
+      </p>
+    </main>
+  );
+}
+export default function AppearanceMenu({
+  compact = false,
+}: {
+  compact?: boolean;
+}) {
   const { preference, choose } = useAppearance();
   const [open, setOpen] = useState(false);
   const root = React.useRef<HTMLDivElement>(null);
@@ -163,17 +217,26 @@ export default function AppearanceMenu() {
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
-        <Icon
-          name={
-            preference === "system"
-              ? "system"
+        {!compact && (
+          <Icon
+            name={
+              preference === "system"
+                ? "system"
+                : preference === "vallum"
+                  ? "sun"
+                  : "moon"
+            }
+          />
+        )}
+        {compact
+          ? "外观 · " +
+            (preference === "system"
+              ? "跟随系统"
               : preference === "vallum"
-                ? "sun"
-                : "moon"
-          }
-        />
-        {labels[preference]}
-        <Icon name="down" />
+                ? "白垣"
+                : "苍渊")
+          : labels[preference]}
+        {!compact && <Icon name="down" />}
       </button>
       {open && (
         <div className="av-theme-menu" role="group" aria-label="选择外观主题">

@@ -38,6 +38,10 @@
   color: var(--text-secondary);
   opacity: 1;
 }
+/* Preserve the leading icon's slot when applying the shared field padding. */
+.av-filter-row .startOverlayIcon + input {
+  padding-left: 36px;
+}
 .av-field:hover:not(:disabled),
 .av-manage-form select:hover:not(:disabled),
 .av-search:hover {

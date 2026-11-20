@@ -30,3 +30,31 @@ export function preciseTime(seconds: number) {
     .toString()
     .padStart(2, "0")}:${(seconds % 60).toFixed(3).padStart(6, "0")}`;
 }
+
+export function frequencyToAxis(hz: number) {
+  return hz <= 100 ? (0.1 * hz) / 100 : 0.1 + Math.log2(hz / 100);
+}
+
+export function frequencyAtHeight(y: number, maxHz: number) {
+  const axis = (1 - Math.max(0, Math.min(1, y))) * frequencyToAxis(maxHz);
+  return axis <= 0.1 ? (100 * axis) / 0.1 : 100 * 2 ** (axis - 0.1);
+}
+
+export function frequencyTicks(maxHz: number) {
+  if (!maxHz) return [];
+  const limit = frequencyToAxis(maxHz);
+  const ticks = [maxHz];
+  for (const hz of [4000, 2000, 1000, 500, 200]) {
+    if (
+      hz < maxHz &&
+      frequencyToAxis(ticks[ticks.length - 1]) - frequencyToAxis(hz) >=
+        limit * 0.08
+    ) {
+      ticks.push(hz);
+    }
+  }
+  return [...ticks, 0].map((hz) => ({
+    hz,
+    top: 100 * (1 - frequencyToAxis(hz) / limit),
+  }));
+}

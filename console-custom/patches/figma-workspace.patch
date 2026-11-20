@@ -750,100 +750,6 @@
        className={overrideClass ? overrideClass : ""}
        id={id}
        label={label}
---- a/web-app/src/screens/Console/Menu/MenuWrapper.tsx
-+++ b/web-app/src/screens/Console/Menu/MenuWrapper.tsx
-@@ -1,89 +1,2 @@
--// This file is part of MinIO Console Server
--// Copyright (c) 2023 MinIO, Inc.
--//
--// This program is free software: you can redistribute it and/or modify
--// it under the terms of the GNU Affero General Public License as published by
--// the Free Software Foundation, either version 3 of the License, or
--// (at your option) any later version.
--//
--// This program is distributed in the hope that it will be useful,
--// but WITHOUT ANY WARRANTY; without even the implied warranty of
--// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
--// GNU Affero General Public License for more details.
--//
--// You should have received a copy of the GNU Affero General Public License
--// along with this program.  If not, see <http://www.gnu.org/licenses/>.
--
--import React, { Fragment } from "react";
--import { useSelector } from "react-redux";
--import { AddIcon, DocumentationIcon, LicenseIcon, Menu, MenuItem } from "mds";
--import { AppState, useAppDispatch } from "../../../store";
--import { menuOpen } from "../../../systemSlice";
--import { getLogoApplicationVariant, getLogoVar } from "../../../config";
--import { useLocation, useNavigate } from "react-router-dom";
--import { IAM_PAGES } from "../../../common/SecureComponent/permissions";
--import { setAddBucketOpen } from "../Buckets/ListBuckets/AddBucket/addBucketsSlice";
--import BucketsListing from "./Listing/BucketsListing";
--import { getLicenseConsent } from "../License/utils";
--
--const MenuWrapper = () => {
--  const dispatch = useAppDispatch();
--  const navigate = useNavigate();
--  const { pathname = "" } = useLocation();
--
--  const sidebarOpen = useSelector(
--    (state: AppState) => state.system.sidebarOpen,
--  );
--
--  return (
--    <Menu
--      isOpen={sidebarOpen}
--      displayGroupTitles
--      applicationLogo={{
--        applicationName: getLogoApplicationVariant(),
--        subVariant: getLogoVar(),
--      }}
--      callPathAction={(path) => {
--        navigate(path);
--      }}
--      signOutAction={() => {
--        navigate("/logout");
--      }}
--      collapseAction={() => {
--        dispatch(menuOpen(!sidebarOpen));
--      }}
--      currentPath={pathname}
--      mobileModeAuto={false}
--      endComponent={
--        <Fragment>
--          <MenuItem
--            name={"Documentation"}
--            icon={<DocumentationIcon />}
--            path={
--              "https://docs.min.io/community/minio-object-store/index.html?ref=con"
--            }
--          />
--          <MenuItem
--            name={"License"}
--            icon={<LicenseIcon />}
--            path={IAM_PAGES.LICENSE}
--            onClick={() => navigate(IAM_PAGES.LICENSE)}
--            badge={!getLicenseConsent()}
--          />
--        </Fragment>
--      }
--      middleComponent={
--        <>
--          <MenuItem
--            name={"Create Bucket"}
--            icon={<AddIcon />}
--            onClick={() => dispatch(setAddBucketOpen(true))}
--          />
--          <BucketsListing />
--        </>
--      }
--    />
--  );
--};
--
--export default MenuWrapper;
-+// SPDX-License-Identifier: AGPL-3.0-or-later
-+export {default} from "custom/WorkspaceMenu";
 --- a/web-app/src/screens/Console/ObjectBrowser/BrowserBreadcrumbs.tsx
 +++ b/web-app/src/screens/Console/ObjectBrowser/BrowserBreadcrumbs.tsx
 @@ -229,7 +229,7 @@
@@ -943,3 +849,81 @@
        <Box>{confirmationContent}</Box>
        <Box
          sx={{
+--- a/web-app/src/screens/Console/Console.tsx
++++ b/web-app/src/screens/Console/Console.tsx
+@@ -18,11 +18,9 @@
+   Fragment,
+   Suspense,
+   useEffect,
+-  useLayoutEffect,
+   useState,
+ } from "react";
+-import { MainContainer, ProgressBar, Snackbar } from "mds";
+-import debounce from "lodash/debounce";
++import { ProgressBar, Snackbar } from "mds";
+ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+ import { useSelector } from "react-redux";
+ import { selFeatures, selSession } from "./consoleSlice";
+@@ -36,8 +34,8 @@
+ } from "../../common/SecureComponent/permissions";
+ import { hasPermission } from "../../common/SecureComponent";
+ import { IRouteRule } from "./Menu/types";
+-import { menuOpen, setSnackBarMessage } from "../../systemSlice";
+-import MenuWrapper from "./Menu/MenuWrapper";
++import { setSnackBarMessage } from "../../systemSlice";
++import ConsoleLayout from "../../custom/ConsoleLayout";
+ import LoadingComponent from "../../common/LoadingComponent";
+ import AddBucketModal from "./Buckets/ListBuckets/AddBucket/AddBucketModal";
+
+@@ -54,7 +52,6 @@
+ const Console = () => {
+   const dispatch = useAppDispatch();
+   const { pathname = "" } = useLocation();
+-  const open = useSelector((state: AppState) => state.system.sidebarOpen);
+   const session = useSelector(selSession);
+   const features = useSelector(selFeatures);
+   const snackBarMessage = useSelector(
+@@ -74,22 +71,6 @@
+   useEffect(() => {
+     dispatch({ type: "socket/OBConnect" });
+   }, [dispatch]);
+-
+-  // Layout effect to be executed after last re-render for resizing only
+-  useLayoutEffect(() => {
+-    // Debounce to not execute constantly
+-    const debounceSize = debounce(() => {
+-      if (open && window.innerWidth <= 1024) {
+-        dispatch(menuOpen(false));
+-      }
+-    }, 300);
+-
+-    // Added event listener for window resize
+-    window.addEventListener("resize", debounceSize);
+-
+-    // We remove the listener on component unmount
+-    return () => window.removeEventListener("resize", debounceSize);
+-  });
+
+   const consoleAdminRoutes: IRouteRule[] = [
+     {
+@@ -165,10 +146,7 @@
+   return (
+     <Fragment>
+       {session && session.status === "ok" ? (
+-        <MainContainer
+-          menu={!hideMenu ? <MenuWrapper /> : <Fragment />}
+-          mobileModeAuto={false}
+-        >
++        <ConsoleLayout showNavigation={!hideMenu}>
+           <Fragment>
+             {loadingProgress < 100 && (
+               <ProgressBar
+@@ -217,7 +195,7 @@
+               />
+             </Routes>
+           </Fragment>
+-        </MainContainer>
++        </ConsoleLayout>
+       ) : null}
+     </Fragment>
+   );

@@ -3,104 +3,109 @@
   padding: 32px;
   display: flex;
   flex-direction: column;
+  gap: 16px;
   background: var(--bg-primary);
   color: var(--text-primary);
 }
 .av-login-header {
-  height: 32px;
+  height: 44px;
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
-.av-login-logo {
-  width: 120px;
-  height: 21px;
-  display: block;
-}
-[data-theme="abyssus"] .av-login-logo {
-  filter: invert(91%) sepia(7%) saturate(282%) hue-rotate(165deg);
+.av-login-header .av-appearance > button {
+  width: 160px;
 }
 .av-login-center {
   flex: 1;
-  min-height: 394px;
+  min-height: 440px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .av-login-form {
-  width: 360px;
+  width: 400px;
   max-width: 100%;
-  height: 330px;
+  height: 440px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
   margin: 0;
 }
-.av-login-title {
-  height: 62px;
-  flex-shrink: 0;
+.av-login-title,
+.av-login-credentials {
+  display: contents;
 }
 .av-login h1 {
   font-size: 24px;
-  line-height: 32px;
-  font-weight: var(--minio-heading-weight);
-  margin: 0 0 8px;
+  line-height: 36px;
+  font-weight: 500;
+  margin: 0;
+  height: 36px;
+  flex: none;
 }
 .av-login-title p {
   margin: 0;
   color: var(--text-secondary);
   font-size: 14px;
   line-height: 22px;
-}
-.av-login-credentials {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  height: 22px;
+  flex: none;
 }
 .av-login-credentials label {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
   font-size: 12px;
   line-height: 18px;
+  color: var(--text-secondary);
+  height: 66px;
+  flex: none;
 }
-.av-login-credentials .av-field,
-.av-login-credentials .av-password {
+.av-login-credentials .av-field {
+  border-radius: 3px;
   width: 100%;
+  height: 40px;
+  min-height: 40px;
+}
+.av-login-show {
+  text-align: left;
+  padding: 0;
+  height: 22px;
+  min-height: 22px;
+  line-height: 22px;
+  flex: none;
 }
 .av-login-form > .av-button {
   width: 100%;
-  flex-shrink: 0;
-  font-size: 14px;
+  height: 40px;
+  min-height: 40px;
+  flex: none;
+  border-radius: 6px;
 }
 .av-login-feedback {
   height: 44px;
-  flex-shrink: 0;
-  font-size: 13px;
-  line-height: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex: none;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-secondary);
 }
 .av-login-feedback p {
   margin: 0;
 }
-.av-login-feedback small {
-  color: var(--text-secondary);
-  font-size: inherit;
-}
-.av-login-feedback[data-state="default"] {
-  color: var(--text-secondary);
+.av-login-feedback[data-state="error"] {
+  color: var(--text-primary);
 }
 .av-login-help {
-  min-height: 32px;
+  height: 32px;
   display: flex;
   gap: 24px;
   flex-wrap: wrap;
   justify-content: center;
-  align-items: center;
+  align-items: flex-start;
   font-size: 12px;
-  line-height: 20px;
+  line-height: 18px;
 }
 .av-login-help a {
   color: var(--text-secondary);
@@ -111,23 +116,54 @@
   text-decoration: underline;
 }
 .av-login-service {
-  width: 360px;
+  width: 400px;
   max-width: 100%;
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 22px;
 }
 @media (max-width: 600px) {
   .av-login {
     padding: 24px 20px;
   }
-  .av-login-logo {
-    width: 120px;
-  }
-  .av-login .av-appearance > button {
-    font-size: 12px;
-    gap: 4px;
-  }
   .av-login-help {
     gap: 16px;
+  }
+  .av-login-header .av-appearance > button {
+    width: 148px;
+  }
+}
+
+
+@media (max-width: 600px) {
+  .av-login {
+    padding: 0 16px 24px;
+    gap: 24px;
+  }
+  .av-login-header {
+    height: 52px;
+    margin-inline: -16px;
+    padding-inline: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .av-login-center {
+    align-items: flex-start;
+    min-height: auto;
+    flex: 0;
+  }
+  .av-login-form {
+    height: auto;
+    gap: 16px;
+  }
+  .av-login-form > .av-button {
+    order: 1;
+  }
+  .av-login-feedback {
+    height: auto;
+    min-height: 36px;
+  }
+  .av-login-help {
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+    height: auto;
   }
 }
