@@ -43,6 +43,7 @@ if (!configure.includes(originalHandler)) throw new Error('Console handler chang
 fs.writeFileSync(configurePath, configure.replace(originalHandler, 'return setupGlobalMiddleware(newManagementHandler(api.Serve(setupMiddlewares)))'));
 fs.copyFileSync(path.join(custom, 'server/manage.go'), path.join(workspace, 'api/manage.go'));
 fs.copyFileSync(path.join(custom, 'appearance-init.js'), path.join(workspace, 'web-app/public/appearance-init.js'));
+fs.cpSync(path.join(custom, 'public/brand'), path.join(workspace, 'web-app/public/brand'), { recursive: true });
 fs.cpSync(path.join(custom, 'ui'), path.join(workspace, 'web-app/src/custom'), { recursive: true });
 fs.cpSync(path.join(custom, 'login'), path.join(workspace, 'web-app/src/screens/LoginPage'), { recursive: true });
 const consolePath = path.join(workspace, 'web-app/src/screens/Console/Console.tsx');
@@ -63,6 +64,9 @@ for (const entry of fs.readdirSync(path.join(custom, 'src'))) {
 const packagePath = path.join(workspace, 'web-app/package.json');
 const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
 pkg.dependencies['wavesurfer.js'] = '7.10.1';
+pkg.dependencies['csv-parse'] = '6.1.0';
+pkg.dependencies.refractor = '4.8.1';
+pkg.dependencies['remark-gfm'] = '3.0.1';
 // Same Git object as the original unavailable minio/mds URL, not a new fork revision.
 pkg.dependencies.mds = 'https://codeload.github.com/bexsoft/mds/tar.gz/400914d72cb3ffa27d600e0ae1f17ece2182ec22';
 fs.writeFileSync(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);

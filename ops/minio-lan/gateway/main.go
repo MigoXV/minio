@@ -23,11 +23,12 @@ import (
 )
 
 type config struct {
-	S3Listen      string   `json:"s3Listen"`
-	ConsoleListen string   `json:"consoleListen"`
-	AllowedCIDRs  []string `json:"allowedCIDRs"`
-	TLSCert       string   `json:"tlsCert"`
-	TLSKey        string   `json:"tlsKey"`
+	S3Listen        string   `json:"s3Listen"`
+	ConsoleListen   string   `json:"consoleListen"`
+	AllowedCIDRs    []string `json:"allowedCIDRs"`
+	AllowAllSources bool     `json:"allowAllSources"`
+	TLSCert         string   `json:"tlsCert"`
+	TLSKey          string   `json:"tlsKey"`
 }
 
 func allowed(remote string, prefixes []netip.Prefix) bool {
@@ -130,9 +131,14 @@ func run(path string) error {
 	if err := decoder.Decode(&cfg); err != nil {
 		return err
 	}
-	prefixes, err := lanPrefixes(cfg.AllowedCIDRs)
-	if err != nil {
-		return err
+	var prefixes []netip.Prefix
+	if cfg.AllowAllSources {
+		prefixes = []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")}
+	} else {
+		prefixes, err = lanPrefixes(cfg.AllowedCIDRs)
+		if err != nil {
+			return err
+		}
 	}
 	resolve := func(p string) string {
 		if filepath.IsAbs(p) {

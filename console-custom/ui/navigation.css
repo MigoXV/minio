@@ -43,11 +43,6 @@
   border-bottom: 1px solid var(--border);
   content: "";
 }
-.v2-top-brand {
-  font:
-    600 20px Inter,
-    sans-serif;
-}
 .v2-top-links {
   display: flex;
   gap: 4px;

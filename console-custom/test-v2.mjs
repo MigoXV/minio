@@ -111,6 +111,45 @@ const openAppearance = async () => {
   await more.click();
   await button("外观设置", nav).click();
 };
+const checkFavicon = async (target, theme) => {
+  const icon = target.locator('head link[rel="icon"]');
+  await expect(icon).toHaveCount(1);
+  const asset = `favicon-${theme}.svg`;
+  await expect(icon).toHaveAttribute("href", `./brand/${asset}?v=2`);
+  await expect(icon).toHaveAttribute("sizes", "16x16");
+  const response = await target.request.get(
+    new URL(await icon.getAttribute("href"), base + "/").href,
+  );
+  assert.ok(response.ok());
+  assert.match(response.headers()["content-type"], /^image\/svg\+xml\b/);
+  assert.deepEqual(
+    await response.body(),
+    fs.readFileSync(path.join(repo, "console-custom/public/brand", asset)),
+  );
+};
+const checkBrand = async (theme) => {
+  const brand = page.locator(".v2-project-brand:visible");
+  await expect(brand).toHaveText("MinIO");
+  const mark = brand.locator("img");
+  await expect(mark).toHaveAttribute(
+    "src",
+    new RegExp(`/nav-${theme}\\.[\\w]+\\.svg$`),
+  );
+  await expect
+    .poll(() => mark.evaluate((img) => img.naturalWidth))
+    .toBeGreaterThan(0);
+  assert.deepEqual(
+    await brand.evaluate((node) => {
+      const { width, height } = node
+        .querySelector("img")
+        .getBoundingClientRect();
+      const { columnGap, fontSize, fontWeight } = getComputedStyle(node);
+      return [width, height, columnGap, fontSize, fontWeight];
+    }),
+    [24, 24, "8px", "20px", "600"],
+  );
+  await checkFavicon(page, theme);
+};
 const checkWorkspace = async (active) => {
   const viewport = page.viewportSize();
   const workspace = page.locator(".v2-workspace");
@@ -120,9 +159,19 @@ const checkWorkspace = async (active) => {
   await expect(nav.locator(".v2-top-link[aria-current]")).toHaveText(active);
   assert.equal((await nav.boundingBox()).height, 48);
   assert.equal((await workspace.boundingBox()).y, 48);
-  const bounds = await header.boundingBox();
-  assert.equal(bounds.x, 32);
-  assert.equal(bounds.x + bounds.width, viewport.width - 32);
+  const objects = page.locator(".v2-browser:visible");
+  const limit = (await objects.count())
+    ? (await objects.getAttribute("class")).includes("v2-with-details")
+      ? 1152
+      : 1024
+    : viewport.width;
+  const width = Math.min(limit, viewport.width - 64);
+  await expect
+    .poll(async () => {
+      const bounds = await header.boundingBox();
+      return [bounds.x, bounds.width];
+    })
+    .toEqual([(viewport.width - width) / 2, width]);
   assert.equal(
     await workspace.evaluate((node) => node.scrollWidth - node.clientWidth),
     0,
@@ -148,7 +197,7 @@ const setTheme = async (theme) => {
   await expect(page.locator(".v2-appearance-page")).toHaveCount(0);
 };
 const openDetails = async (name) => {
-  await button(name).click();
+  await row(name).getByRole("checkbox").check();
   await button("详情", row(name)).click();
   await expect(page.locator(".v2-object-details")).toBeVisible();
   await page.locator(".v2-object-layout").evaluate(async (layout) => {
@@ -164,7 +213,6 @@ const viewObject = async (name) => {
 const preview = async (name) => {
   await goto("/browser/" + bucket);
   await button(name).click();
-  await button(name.startsWith("tone.") ? "试听" : "预览", row(name)).click();
   await expect(page.locator(".v2-preview")).toBeVisible();
 };
 const objectBody = async (key) => {
@@ -220,6 +268,7 @@ try {
     );
     await page.reload({ waitUntil: "networkidle" });
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await checkBrand(theme);
     assert.equal(
       (await page.locator(".av-login-form").boundingBox()).width,
       400,
@@ -309,6 +358,35 @@ try {
   await expect(
     page.getByRole("heading", { name: "存储桶", exact: true }),
   ).toBeVisible();
+  for (const theme of ["vallum", "abyssus"]) {
+    await setTheme(theme);
+    await checkBrand(theme);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await checkBrand(theme);
+    await page.setViewportSize(desktopViewport);
+  }
+  const startup = await browser.newPage({ colorScheme: "dark" });
+  try {
+    await startup.route("**/static/js/**", (route) => route.abort());
+    await startup.goto(base + "/login");
+    await expect(startup.locator("html")).toHaveAttribute(
+      "data-theme",
+      "abyssus",
+    );
+    await checkFavicon(startup, "abyssus");
+  } finally {
+    await startup.close();
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+  await openAppearance();
+  await page.getByRole("button", { name: /^跟随系统/ }).click();
+  await page.keyboard.press("Escape");
+  await checkBrand("vallum");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await checkBrand("abyssus");
+  await setTheme("abyssus");
+  await page.emulateMedia({ colorScheme: null });
+  pass("双主题登录、桌面和移动标志，标签页图标首屏、手动及系统切换");
   // Test the UI mutation itself, then independently verify backend state.
   const newBucket = "v2-created-" + suffix;
   await button("创建存储桶").click();
@@ -615,11 +693,19 @@ try {
     await button("暂停").click();
   }
   pass("WAV、MP3、FLAC、M4A、OGG 编码播放");
+  await client.putObject(
+    bucket,
+    "unsupported.zip",
+    Buffer.from([80, 75, 3, 4, 0]),
+    {
+      "Content-Type": "application/zip",
+    },
+  );
   for (const [name, key] of [
     ["sample.svg", "image"],
     ["sample.pdf", "pdf"],
     ["video.mp4", "video"],
-    ["README.txt", "unsupported"],
+    ["unsupported.zip", "unsupported"],
   ]) {
     await preview(name);
     if (key === "image")
@@ -661,9 +747,250 @@ try {
     await button("返回对象浏览").click();
     await expect(page).toHaveURL(base + "/browser/" + bucket);
     await expect(page.locator(".v2-object-details")).toHaveCount(0);
-    await expect(row(name).getByRole("checkbox")).toBeChecked();
+    await expect(row(name).getByRole("checkbox")).not.toBeChecked();
   }
   pass("双主题三种尺寸图片、PDF 翻页、视频播放、非预览格式降级及返回对象");
+
+  const sampleLimit = 1024 * 1024;
+  const longLog = Buffer.concat([
+    Buffer.from("普通日志\n".repeat(260) + "search-target\n"),
+    Buffer.alloc(sampleLimit, 120),
+    Buffer.from("unread-tail"),
+  ]);
+  const csvHead = Buffer.from(
+    'id,note\n00123,"第一行,带逗号\n第二行 ""引用"""\n90000,"',
+  );
+  const hugeCsv = Buffer.concat([
+    csvHead,
+    Buffer.alloc(sampleLimit, 120),
+    Buffer.from('"\n'),
+  ]);
+  const markdown = [
+    "# Markdown 示例",
+    "",
+    "|名称|状态|",
+    "|---|---|",
+    "|对象|可预览|",
+    "",
+    "![图片替代文字](https://example.invalid/preview-test.png)",
+    "",
+    '<div data-preview-html="ignored">原始标签</div>',
+  ].join("\n");
+  for (const [name, body, type] of [
+    ["README", "无扩展名文本", "application/octet-stream"],
+    ["empty.txt", Buffer.alloc(0), "text/plain"],
+    ["source.py", "def hello():\n    return 42\n", "application/octet-stream"],
+    ["source.c", "int main(void) { return 0; }\n", "text/plain"],
+    ["legacy.txt", Buffer.from([0xd6, 0xd0, 0xce, 0xc4]), "text/plain"],
+    [
+      "report.csv",
+      'id,note\n00123,"第一行,带逗号\n第二行 ""引用"""\n00456\n',
+      "text/csv",
+    ],
+    ["report.tsv", "id\t说明\n00001\t制表数据\n", "text/tab-separated-values"],
+    ["malformed.csv", 'id,note\n1,"未闭合', "text/csv"],
+    ["README.md", markdown, "text/markdown"],
+    ["binary.txt", Buffer.from([80, 75, 3, 4, 0]), "text/plain"],
+    ["long.log", longLog, "text/plain"],
+    ["huge.csv", hugeCsv, "text/csv"],
+    ["delayed.txt", "等待中", "text/plain"],
+  ]) {
+    await client.putObject(bucket, name, Buffer.from(body), {
+      "Content-Type": type,
+    });
+  }
+  const source = page.getByRole("region", { name: "文本内容" });
+  await preview("README");
+  await expect(source).toContainText("无扩展名文本");
+  await button("复制预览内容").click();
+  await expect(page.getByText("已复制", { exact: true })).toBeVisible();
+  assert.equal(
+    await page.evaluate(() => navigator.clipboard.readText()),
+    "无扩展名文本",
+  );
+  await page.evaluate(() =>
+    Object.defineProperty(navigator, "clipboard", { value: undefined }),
+  );
+  await button("复制预览内容").click();
+  const manualCopy = page.getByRole("textbox", {
+    name: "请复制已选中的预览内容",
+  });
+  await expect(manualCopy).toBeFocused();
+  assert.deepEqual(
+    await manualCopy.evaluate((field) => [
+      field.selectionStart,
+      field.selectionEnd,
+    ]),
+    [0, "无扩展名文本".length],
+  );
+  await preview("empty.txt");
+  await expect(page.getByRole("heading", { name: "文件为空" })).toBeVisible();
+  await preview("legacy.txt");
+  await expect(
+    page.getByRole("heading", { name: "无法解码文本" }),
+  ).toBeVisible();
+  await page
+    .getByRole("combobox", { name: "文本编码" })
+    .selectOption("gb18030");
+  await expect(source).toContainText("中文");
+  await preview("binary.txt");
+  await expect(
+    page.getByRole("heading", { name: "此文件暂不支持在线预览" }),
+  ).toBeVisible();
+  for (const [name, keyword] of [
+    ["source.py", "def"],
+    ["source.c", "int"],
+  ]) {
+    await preview(name);
+    await expect(
+      source.locator(".token.keyword").getByText(keyword, { exact: true }),
+    ).toBeVisible();
+  }
+  const grid = page.getByRole("table", { name: "预览表格" });
+  await preview("report.csv");
+  await expect(
+    grid.getByRole("cell", { name: "00123", exact: true }),
+  ).toBeVisible();
+  await expect(
+    grid.getByRole("cell", {
+      name: '第一行,带逗号 第二行 "引用"',
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.getByRole("checkbox", { name: "首行作为表头" }).uncheck();
+  await expect(grid.getByRole("columnheader", { name: "列 1" })).toBeVisible();
+  await expect(
+    grid.getByRole("cell", { name: "id", exact: true }),
+  ).toBeVisible();
+  await button("原文").click();
+  await expect(source).toContainText("00456");
+  await preview("report.tsv");
+  await expect(
+    grid.getByRole("cell", { name: "00001", exact: true }),
+  ).toBeVisible();
+  await preview("malformed.csv");
+  await expect(
+    page.getByRole("heading", { name: "表格格式无法解析" }),
+  ).toBeVisible();
+  await button("查看原文").click();
+  await expect(source).toContainText("未闭合");
+  await preview("huge.csv");
+  await expect(
+    page.getByText("仅预览前 1 MiB，完整文件可下载。"),
+  ).toBeVisible();
+  await expect(grid.getByRole("cell", { name: "00123" })).toBeVisible();
+  await expect(grid.getByRole("cell", { name: "90000" })).toHaveCount(0);
+
+  const requestFor = (name) => (value) => {
+    const url = new URL(value.url());
+    return (
+      url.pathname.endsWith("/objects/download") &&
+      url.searchParams.get("prefix") === name
+    );
+  };
+  const partial = page.waitForResponse(requestFor("long.log"));
+  await preview("long.log");
+  const response = await partial;
+  assert.equal(response.status(), 206);
+  assert.equal(response.request().headers().range, "bytes=0-1048575");
+  await expect(
+    page.getByText("仅预览前 1 MiB，完整文件可下载。"),
+  ).toBeVisible();
+  const search = page.getByRole("searchbox", { name: "搜索预览内容" });
+  await search.fill("search-target");
+  await search.press("Enter");
+  await expect(source.locator("[data-matched]")).toContainText("search-target");
+  await page.getByRole("checkbox", { name: "自动换行" }).check();
+  await expect(source.locator(".v2-text-wrap")).toBeVisible();
+  await search.fill("unread-tail");
+  await expect(page.getByText("无匹配", { exact: true })).toBeVisible();
+  const download = page.waitForEvent("download");
+  await button("下载").click();
+  assert.deepEqual(fs.readFileSync(await (await download).path()), longLog);
+
+  const downloadRoute = "**/objects/download?**";
+  const denyTextRead = (route) =>
+    requestFor("README")(route.request())
+      ? route.fulfill({ status: 403, body: "denied" })
+      : route.continue();
+  await page.route(downloadRoute, denyTextRead);
+  await preview("README");
+  await expect(page.getByRole("alert")).toContainText("访问权限");
+  await page.unroute(downloadRoute, denyTextRead);
+  await button("重试").click();
+  await expect(source).toContainText("无扩展名文本");
+
+  let release;
+  const held = new Promise((resolve) => {
+    release = resolve;
+  });
+  const holdTextRead = async (route) => {
+    if (!requestFor("delayed.txt")(route.request())) return route.continue();
+    await held;
+    await route.abort().catch(() => {});
+  };
+  await page.route(downloadRoute, holdTextRead);
+  try {
+    const started = page.waitForRequest(requestFor("delayed.txt"));
+    const cancelled = page.waitForEvent("requestfailed", {
+      predicate: requestFor("delayed.txt"),
+    });
+    await preview("delayed.txt");
+    await started;
+    await button("返回对象浏览").click();
+    assert.match((await cancelled).failure().errorText, /ERR_ABORTED/);
+    await button("README").click();
+    await expect(source).toContainText("无扩展名文本");
+  } finally {
+    release();
+    await page.unroute(downloadRoute, holdTextRead);
+  }
+
+  await goto("/browser/" + bucket);
+  const selectedSources = ["source.c", "source.py"].map((name) =>
+    row(name).getByRole("checkbox"),
+  );
+  for (const checkbox of selectedSources) await checkbox.check();
+  await button("report.csv").press("Enter");
+  await expect(
+    grid.getByRole("cell", { name: "00123", exact: true }),
+  ).toBeVisible();
+  await button("返回对象浏览").click();
+  for (const checkbox of selectedSources) await expect(checkbox).toBeChecked();
+  await expect(row("report.csv").getByRole("checkbox")).not.toBeChecked();
+
+  for (const theme of ["vallum", "abyssus"]) {
+    await page.setViewportSize(compactViewport);
+    await setTheme(theme);
+    await preview("README.md");
+    await expect(source).toContainText("# Markdown 示例");
+    await button("渲染").click();
+    const rendered = page.getByRole("article", { name: "Markdown 渲染" });
+    await expect(
+      rendered.getByRole("heading", { name: "Markdown 示例" }),
+    ).toBeVisible();
+    await expect(rendered.getByRole("cell", { name: "可预览" })).toBeVisible();
+    await expect(rendered.getByText("图片替代文字")).toBeVisible();
+    await expect(rendered.locator("img, [data-preview-html]")).toHaveCount(0);
+    await checkWorkspace("存储桶");
+    await shot("text-markdown-" + theme);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await preview("report.csv");
+    await expect(grid.getByRole("cell", { name: "00123" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "文本预览" })).toHaveCSS(
+      "border-top-width",
+      "0px",
+    );
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+      390,
+    );
+    await shot("text-csv-mobile-" + theme);
+  }
+  await page.setViewportSize(desktopViewport);
+  pass("双主题文本、源码高亮、CSV/TSV、Markdown、编码、截断、下载及请求取消");
+
   // Management CRUD via visible controls, with API checks only for verification and cleanup.
   await goto("/manage/users");
   await button("创建用户").click();
@@ -973,6 +1300,7 @@ try {
           assert.equal(create.x - refresh.x - refresh.width, 8);
         }
         if (key === "objects") {
+          const rightEdge = (compactViewport.width + 1152) / 2;
           await expect
             .poll(async () => {
               const bounds = await page
@@ -980,12 +1308,12 @@ try {
                 .boundingBox();
               return Math.round(bounds.x + bounds.width);
             })
-            .toBe(1248);
+            .toBe(rightEdge);
           const inspector = await page
             .locator(".v2-object-details")
             .boundingBox();
           assert.equal(inspector.width, 320);
-          assert.equal(inspector.x + inspector.width, 1248);
+          assert.equal(inspector.x + inspector.width, rightEdge);
         }
         await shot((key === "objects" ? "details" : key) + "-compact-" + theme);
         await page.setViewportSize(desktopViewport);
@@ -1167,7 +1495,7 @@ try {
   await page.setViewportSize({ width: 1280, height: 720 });
   await goto("/browser/" + navigationBucket);
   const workspace = page.locator(".v2-workspace");
-  const list = page.locator(".v2-object-list .v2-table-wrap");
+  const list = page.locator(".v2-file-records");
   await expect(button("row-23.txt")).toBeVisible();
   await list.evaluate((node) => (node.scrollTop = 160));
   const scroll = await list.evaluate((node) => node.scrollTop);
@@ -1446,6 +1774,9 @@ try {
       await expect(page).toHaveURL(base + route("data-bin/"));
       await expect(button("archive/")).toBeVisible();
       await expect(popover).toHaveCount(0);
+      await button("archive/").click();
+      await expect(page).toHaveURL(base + route(siblingPrefix));
+      await expect(button("archived.wav")).toBeVisible();
     }
     if (mobile) {
       await expect(
@@ -1535,7 +1866,7 @@ try {
   };
   const longName = "record-12-" + "long-file-name-".repeat(7) + ".wav";
   await Promise.all(
-    Array.from({ length: 36 }, (_, index) =>
+    Array.from({ length: 56 }, (_, index) =>
       client.putObject(
         navigationBucket,
         sourcePrefix +
@@ -1549,7 +1880,8 @@ try {
   const motion = (trigger) =>
     trigger.evaluate(async (control) => {
       const layout = document.querySelector(".v2-object-layout");
-      const table = layout.querySelector(".v2-table-wrap");
+      const table = layout.querySelector(".v2-file-records");
+      const workspace = layout.closest(".v2-browser");
       const measure = () => ({
         width: table.getBoundingClientRect().width,
         x: layout.querySelector(".v2-object-details")?.getBoundingClientRect()
@@ -1560,60 +1892,63 @@ try {
       control.click();
       await new Promise(requestAnimationFrame);
       layout.getBoundingClientRect();
-      const animation = layout.getAnimations()[0];
-      assertAnimation(animation);
-      animation.pause();
-      animation.currentTime = 100;
+      const animation = layout
+        .getAnimations()
+        .find((item) => item.transitionProperty === "grid-template-columns");
+      const resize = workspace
+        .getAnimations()
+        .find((item) => item.transitionProperty === "max-width");
+      if (!animation || !resize)
+        throw new Error(
+          "Expected synchronized workspace and details transitions",
+        );
+      for (const transition of [animation, resize]) {
+        transition.pause();
+        transition.currentTime = 100;
+      }
       const middle = measure();
       const timing = animation.effect.getTiming();
-      animation.finish();
+      for (const transition of [animation, resize]) transition.finish();
       return {
         before,
         middle,
         duration: timing.duration,
         easing: getComputedStyle(layout).transitionTimingFunction,
       };
-
-      function assertAnimation(transition) {
-        if (
-          !transition ||
-          transition.transitionProperty !== "grid-template-columns"
-        )
-          throw new Error("No animated grid track for object details");
-      }
     });
   const inspectDetails = async (theme) => {
     await goto(route(sourcePrefix));
     const filter = page.getByRole("textbox", { name: "筛选对象" });
     await filter.fill("record-");
-    const fileRow = row(longName),
-      name = button(longName);
+    const fileRow = row(longName);
     await expect(desktopDetail).toHaveCount(0);
     await expect(button("详情", fileRow)).toHaveCount(0);
-    await name.click();
+    await fileRow.getByRole("checkbox").check();
     await expect(fileRow.getByRole("checkbox")).toBeChecked();
     await expect(button("试听", fileRow)).toBeVisible();
     await expect(button("详情", row("record-13.wav"))).toHaveCount(0);
     await expect(desktopDetail).toHaveCount(0);
     const collapsed = await list.boundingBox();
     await shot("object-browser-closed-1280-" + theme);
+    const openListWidth = collapsed.width + 128 - 336;
     const opening = await motion(button("详情", fileRow));
     assert.equal(opening.duration, 200);
     assert.equal(opening.easing, "ease-out");
     assert.equal(opening.before.width, collapsed.width);
     assert.ok(
       opening.middle.width < collapsed.width &&
-        opening.middle.width > collapsed.width - 336,
+        opening.middle.width > openListWidth,
     );
     assert.equal(opening.middle.scroll, opening.before.scroll);
     assert.ok(opening.before.scroll > 0);
     await expect
       .poll(async () => (await list.boundingBox()).width)
-      .toBe(collapsed.width - 336);
+      .toBe(openListWidth);
     const inspector = await desktopDetail.boundingBox();
+    const listPanel = await page.locator(".v2-object-list").boundingBox();
     assert.equal(inspector.width, 320);
     assert.ok(opening.middle.x > inspector.x);
-    assert.equal(inspector.x - collapsed.x - collapsed.width + 336, 16);
+    assert.equal(inspector.x - listPanel.x - listPanel.width, 16);
     const nameLayout = await fileRow.evaluate((item) => {
       const style = (node) => getComputedStyle(node);
       const cells = item.querySelectorAll("td");
@@ -1686,10 +2021,159 @@ try {
     assert.equal(await desktopDetail.count(), 0);
     await page.emulateMedia({ reducedMotion: "no-preference" });
   };
+  const shortPrefix = "geometry/four/";
+  await Promise.all(
+    Array.from({ length: 4 }, (_, index) =>
+      client.putObject(
+        navigationBucket,
+        shortPrefix + `sample-${index}.txt`,
+        Buffer.from("test"),
+      ),
+    ),
+  );
+  const verifyObjectWorkspace = async (theme, viewport) => {
+    await page.setViewportSize(viewport);
+    const panel = page.locator(".v2-object-list");
+    const header = page.locator(".v2-files thead");
+    const footer = panel.locator(".v2-table-caption");
+    const address = page.locator(".v2-object-address");
+    const toolbar = page.locator(".v2-object-toolbar");
+    const files = list.locator(".v2-file-name");
+    const assertBounds = async (opened) => {
+      const width = opened ? 1152 : 1024;
+      const x = (viewport.width - width) / 2;
+      assert.deepEqual(await nav.boundingBox(), {
+        x: 0,
+        y: 0,
+        width: viewport.width,
+        height: 48,
+      });
+      for (const control of [address, toolbar]) {
+        const bounds = await control.boundingBox();
+        assert.deepEqual([bounds.x, bounds.width], [x, width]);
+      }
+      const bounds = await panel.boundingBox();
+      assert.deepEqual(bounds, {
+        x,
+        y: 166,
+        width: opened ? 816 : 1024,
+        height: viewport.height - 32 - 166,
+      });
+      if (opened) {
+        const inspector = await desktopDetail.boundingBox();
+        assert.deepEqual([inspector.x, inspector.width], [x + 832, 320]);
+      }
+      assert.equal(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+        viewport.width,
+      );
+      assert.equal(
+        await list.evaluate((node) => node.scrollWidth - node.clientWidth),
+        0,
+      );
+      const dimensions = await workspace
+        .locator(".v2-workspace-content")
+        .evaluate((node) => [node.scrollHeight, node.clientHeight]);
+      assert.equal(dimensions[0], dimensions[1]);
+    };
+
+    for (const [path, count, first] of [
+      ["geometry/empty/", 0, ""],
+      [shortPrefix, 4, "sample-0.txt"],
+      [sourcePrefix, 57, "record-00.wav"],
+    ]) {
+      await goto(route(path));
+      await expect(files).toHaveCount(count);
+      await expect(footer.locator(".v2-file-totals")).toContainText(
+        `${count} 个对象 · `,
+      );
+      await assertBounds(false);
+      const pathEnd = await page.locator(".v2-breadcrumb").boundingBox();
+      const edit = await button("编辑路径").boundingBox();
+      assert.equal(edit.x, pathEnd.x + pathEnd.width);
+      const footerBox = await footer.boundingBox();
+      assert.equal(footerBox.height, 49);
+      assert.equal(footerBox.y + footerBox.height, viewport.height - 33);
+      assert.equal(await list.evaluate((node) => node.scrollTop), 0);
+      await expect(button("上一页")).toBeDisabled();
+      await expect(button("下一页")).toBeDisabled();
+      const checkbox = page.getByRole("checkbox", { name: "选择全部对象" });
+      assert.equal(
+        await checkbox.evaluate((node) => getComputedStyle(node).accentColor),
+        await button("上传").evaluate(
+          (node) => getComputedStyle(node).backgroundColor,
+        ),
+      );
+      if (!count) {
+        await expect(
+          page.getByText("此路径暂无对象", { exact: true }),
+        ).toBeVisible();
+        await shot(`object-layout-${viewport.width}-${theme}-empty`);
+        continue;
+      }
+      await openDetails(first);
+      await assertBounds(true);
+      await expect(
+        row(first).getByRole("button", { name: first, exact: true }),
+      ).toBeEnabled();
+      await expect(button("详情", row(first))).toBeEnabled();
+      await expect(button("批量操作", footer)).toBeEnabled();
+      await expect(footer.locator(".v2-file-selection")).toContainText(
+        "已选 1 项",
+      );
+      assert.equal((await footer.boundingBox()).y, footerBox.y);
+      const headerBounds = await header.boundingBox();
+      const columns = (group, cells) =>
+        group.locator(cells).evaluateAll((nodes) =>
+          nodes.map((node) => {
+            const { x, width } = node.getBoundingClientRect();
+            return [x, width];
+          }),
+        );
+      assert.deepEqual(
+        await columns(header, "th"),
+        await columns(row(first), "td"),
+      );
+      const scroll = await list.evaluate((node) => {
+        node.scrollTop = 240;
+        return node.scrollTop;
+      });
+      assert.equal(scroll, count === 4 ? 0 : 240);
+      assert.deepEqual(await header.boundingBox(), headerBounds);
+      assert.equal((await footer.boundingBox()).y, footerBox.y);
+      await shot(`object-layout-${viewport.width}-${theme}-${count}`);
+      await button("关闭对象详情").click();
+      await expect(desktopDetail).toHaveCount(0);
+      await assertBounds(false);
+      assert.equal(await list.evaluate((node) => node.scrollTop), scroll);
+      assert.equal((await footer.boundingBox()).y, footerBox.y);
+
+      if (count > 50) {
+        const pageSize = page.getByLabel("每页显示数量");
+        const pageNumber = page.getByLabel("跳转页码");
+        await pageSize.selectOption("50");
+        await expect(files).toHaveCount(50);
+        await list.evaluate((node) => (node.scrollTop = 240));
+        await button("下一页").click();
+        await expect(pageNumber).toHaveValue("1");
+        await expect(files).toHaveCount(7);
+        assert.equal(await list.evaluate((node) => node.scrollTop), 0);
+        assert.equal((await footer.boundingBox()).y, footerBox.y);
+        await button("上一页").click();
+        await expect(pageNumber).toHaveValue("0");
+        await expect(files).toHaveCount(50);
+        await pageNumber.selectOption({ value: "1" });
+        await expect(files).toHaveCount(7);
+      }
+    }
+  };
   for (const theme of ["vallum", "abyssus"]) {
     await page.setViewportSize(compactViewport);
     await setTheme(theme);
     await inspectDetails(theme);
+    await verifyObjectWorkspace(theme, compactViewport);
+    await verifyObjectWorkspace(theme, { width: 2048, height: 1006 });
+    await page.setViewportSize(compactViewport);
     await chooseSibling(false);
     await editPrefix(false, theme);
     await page.setViewportSize({ width: 390, height: 844 });
@@ -1751,6 +2235,7 @@ try {
   pass(
     "双主题 1280×720 详情收起与展开、长文件名、滑入滑出、滚动和减少动态效果",
   );
+  pass("双主题 1280×720 和 2048×1006 空、短、长对象列表与固定表头页脚及翻页");
 
   pass("双主题桌面和移动路径编辑、真实目录补全、键盘、取消及中文空格前缀");
 

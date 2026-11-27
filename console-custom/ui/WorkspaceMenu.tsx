@@ -5,6 +5,7 @@ import { hasPermission } from "../common/SecureComponent";
 import { IAM_SCOPES } from "../common/SecureComponent/permissions";
 import { V2Icon } from "./V2";
 import { useAppearance } from "./Appearance";
+import ProjectBrand from "./ProjectBrand";
 import {
   accessNavigation,
   availableAccessNavigation,
@@ -108,8 +109,9 @@ export default function WorkspaceMenu({
     ["访问管理", "users", "/manage/" + accessItems[0].area, inAccess],
   ] as const;
   const hoverMenu = (target: "access" | "more") => ({
-    onPointerEnter: (event: React.PointerEvent) => {
-      if (event.pointerType === "mouse") setPanel(target);
+    onPointerMove: (event: React.PointerEvent) => {
+      // Resizing can move a trigger under a stationary pointer.
+      if (event.pointerType === "mouse" && panel !== target) setPanel(target);
     },
     onPointerLeave: (event: React.PointerEvent) => {
       if (event.pointerType === "mouse")
@@ -169,7 +171,7 @@ export default function WorkspaceMenu({
   return (
     <header className="v2-navigation">
       <nav className="v2-top-nav" aria-label="主导航">
-        <div className="v2-top-brand">MinIO</div>
+        <ProjectBrand className="v2-top-brand" />
         <div className="v2-top-links">
           {primary.map(([label, , to, current]) =>
             label === "访问管理" ? (
@@ -258,7 +260,7 @@ export default function WorkspaceMenu({
         </div>
       </nav>
       <div className="v2-mobile-top">
-        <div className="v2-top-brand">MinIO</div>
+        <ProjectBrand className="v2-top-brand" />
         <button
           type="button"
           ref={mobileButton}
