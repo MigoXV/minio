@@ -10,6 +10,7 @@ import { api } from "../api";
 import { hasPermission } from "../common/SecureComponent";
 import { PageHeader, Modal, State, FieldLabel, errorMessage } from "./V2";
 import WorkspacePopover from "./WorkspacePopover";
+import OverviewStorage, { type StorageNode } from "./OverviewStorage";
 export async function manage<T = any>(
   path: string,
   method = "GET",
@@ -62,6 +63,13 @@ const status = (s: string) =>
       ? "已停用"
       : s || "—";
 type Dialog = { kind: string; title: string; item?: any; description?: string };
+type Overview = {
+  mode: string;
+  servers: number;
+  region: string;
+  storageNodes?: StorageNode[];
+};
+
 export default function ManagementV2() {
   const { pathname } = useLocation();
   const [, area = "overview", rawName = ""] = pathname
@@ -84,6 +92,10 @@ function ManagementArea({ area, name }: { area: string; name: string }) {
     [denied, setDenied] = useState(false),
     [loading, setLoading] = useState(true),
     [revision, setRevision] = useState(0);
+  const [overview, setOverview] = useState<{
+    data: Overview;
+    updatedAt: number;
+  } | null>(null);
   const [filter, setFilter] = useState("");
   const [dialog, setDialog] = useState<Dialog | null>(null),
     [form, setForm] = useState<Record<string, string>>({}),
@@ -114,8 +126,8 @@ function ManagementArea({ area, name }: { area: string; name: string }) {
     (async () => {
       try {
         if (area === "overview") {
-          const data = await manage("/overview");
-          if (alive) setInfo(data);
+          const data = await manage<Overview>("/overview");
+          if (alive) setOverview({ data, updatedAt: Date.now() });
         } else if (area === "config") {
           const data = await manage(
             "/config/" + encodeURIComponent(name || "api"),
@@ -146,8 +158,10 @@ function ManagementArea({ area, name }: { area: string; name: string }) {
         }
       } catch (e) {
         if (alive) {
+          const status = (e as { status?: number }).status;
           setError(errorMessage(e));
-          setDenied((e as { status?: number }).status === 403);
+          setDenied(status === 403);
+          if (status === 401 || status === 403) setOverview(null);
         }
       } finally {
         if (alive) setLoading(false);
@@ -507,7 +521,7 @@ function ManagementArea({ area, name }: { area: string; name: string }) {
       onClick={reload}
       disabled={loading || busy}
     >
-      刷新
+      {overview && loading ? "刷新中" : "刷新"}
     </button>
   );
   const actions = (
@@ -612,9 +626,9 @@ function ManagementArea({ area, name }: { area: string; name: string }) {
           {notice}
         </p>
       )}
-      {loading ? (
+      {loading && !overview ? (
         <State title="正在加载…">请稍候。</State>
-      ) : error ? (
+      ) : error && !overview ? (
         <State
           title={denied ? "没有访问权限" : "无法加载内容"}
           error
@@ -632,20 +646,35 @@ function ManagementArea({ area, name }: { area: string; name: string }) {
         </State>
       ) : (
         <>
-          {area === "overview" && (
-            <div className="v2-management-flow">
-              <h2>运行状态</h2>
-              <dl className="v2-data">
-                <dt>运行模式</dt>
-                <dd>{info.mode || "—"}</dd>
-                <dt>节点数</dt>
-                <dd>{info.servers ?? "—"}</dd>
-                <dt>区域</dt>
-                <dd>{info.region || "默认"}</dd>
-                <dt>服务</dt>
-                <dd>运行中</dd>
-              </dl>
-            </div>
+          {overview && (
+            <>
+              <div className="v2-overview-status">
+                <h2>运行状态</h2>
+                <dl className="v2-overview-status-list">
+                  <div>
+                    <dt>运行模式</dt>
+                    <dd>{overview.data.mode || "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>节点数</dt>
+                    <dd>{overview.data.servers ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>区域</dt>
+                    <dd>{overview.data.region || "默认"}</dd>
+                  </div>
+                  <div>
+                    <dt>服务</dt>
+                    <dd>运行中</dd>
+                  </div>
+                </dl>
+              </div>
+              <OverviewStorage
+                nodes={overview.data.storageNodes ?? []}
+                updatedAt={overview.updatedAt}
+                refreshFailed={Boolean(error)}
+              />
+            </>
           )}
           {area === "users" &&
             table(

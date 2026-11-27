@@ -101,6 +101,7 @@ export default function BrowserWorkspace() {
     [share, setShare] = useState("");
   const epoch = useRef(0);
   const objectLayout = useRef<HTMLDivElement>(null);
+  const objectRecords = useRef<HTMLTableSectionElement>(null);
   const detailTrigger = useRef<HTMLButtonElement | null>(null);
   const session = useSelector((s: AppState) => s.console.session);
   const can = (action: string, name = prefix) => {
@@ -258,7 +259,7 @@ export default function BrowserWorkspace() {
     };
   }, [bucket, detail?.name, detail?.version_id, revision]);
   useEffect(() => {
-    if (previewName && !detail) {
+    if (previewName && detail?.name !== previewName) {
       const found = records.find((o) => o.name === previewName);
       if (found) setDetail(found);
       else setDetail({ name: previewName });
@@ -284,6 +285,14 @@ export default function BrowserWorkspace() {
         }),
     [records, filter, sort],
   );
+  const pageCount = Math.max(1, Math.ceil(visible.length / pageSize));
+  const currentPage = Math.min(page, pageCount - 1);
+  useLayoutEffect(() => {
+    if (objectRecords.current) objectRecords.current.scrollTop = 0;
+  }, [bucket, prefix, currentPage, pageSize, filter, sort]);
+  useEffect(() => {
+    if (!loading && page !== currentPage) setPage(currentPage);
+  }, [loading, page, currentPage]);
   const filteredBuckets = buckets.filter((b) =>
       b.name.toLowerCase().includes(filter.toLowerCase()),
     ),
@@ -546,7 +555,7 @@ export default function BrowserWorkspace() {
   );
   return (
     <>
-      {previewName && detail && (
+      {previewName && detail?.name === previewName && (
         <PreviewPage
           bucket={bucket}
           object={{ ...detail, content_type: detailType }}
@@ -555,7 +564,12 @@ export default function BrowserWorkspace() {
         />
       )}
       <main
-        className={bucket ? "v2-page v2-browser" : "v2-page v2-buckets"}
+        className={
+          bucket
+            ? "v2-page v2-browser" +
+              (detailsState === "open" ? " v2-with-details" : "")
+            : "v2-page v2-buckets"
+        }
         hidden={!!previewName}
       >
         {bucket ? (
@@ -694,216 +708,210 @@ export default function BrowserWorkspace() {
             }
           >
             <div className="v2-object-list">
-              <div className="v2-table-wrap">
-                <table className="v2-table v2-files" role="table">
-                  <colgroup>
-                    <col className="v2-file-checkbox-column" />
-                    <col />
-                    <col className="v2-file-date-column" />
-                    <col className="v2-file-size-column" />
-                    <col className="v2-file-actions-column" />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th>
-                        <input
-                          type="checkbox"
-                          aria-label="选择全部对象"
-                          checked={allSelected}
-                          ref={(input) => {
-                            if (input) input.indeterminate = someSelected;
-                          }}
-                          onChange={(e) =>
-                            setSelected(
-                              e.target.checked
-                                ? visible.map((o) => o.name || "")
-                                : [],
-                            )
-                          }
-                        />
-                      </th>
-                      {sortHead("name", "名称")}
-                      {sortHead("last_modified", "修改时间")}
-                      {sortHead("size", "大小")}
-                      <th aria-label="操作" />
-                    </tr>
-                  </thead>
-                  <tbody role="rowgroup">
-                    {visible
-                      .slice(page * pageSize, (page + 1) * pageSize)
-                      .map((object, index) => {
-                        const name = object.name || "";
-                        const label = name.slice(prefix.length) || name;
-                        const folder = name.endsWith("/");
-                        const audio = isAudioObject(name, object.content_type);
-                        const checked = selected.includes(name);
-                        const current = checked && selected.length === 1;
-                        return (
-                          <tr
-                            key={name + object.version_id + index}
-                            role="row"
-                            aria-selected={checked}
-                          >
-                            <td role="cell">
-                              <input
-                                type="checkbox"
-                                aria-label={"选择 " + name}
-                                checked={checked}
-                                onChange={(event) =>
-                                  setSelected((previous) =>
-                                    event.target.checked
-                                      ? [...previous, name]
-                                      : previous.filter(
-                                          (item) => item !== name,
-                                        ),
-                                  )
+              <table
+                className="v2-table v2-files"
+                aria-label="对象列表"
+                role="table"
+              >
+                <thead>
+                  <tr>
+                    <th>
+                      <input
+                        type="checkbox"
+                        aria-label="选择全部对象"
+                        checked={allSelected}
+                        ref={(input) => {
+                          if (input) input.indeterminate = someSelected;
+                        }}
+                        onChange={(e) =>
+                          setSelected(
+                            e.target.checked
+                              ? visible.map((o) => o.name || "")
+                              : [],
+                          )
+                        }
+                      />
+                    </th>
+                    {sortHead("name", "名称")}
+                    {sortHead("last_modified", "修改时间")}
+                    {sortHead("size", "大小")}
+                    <th aria-label="操作" />
+                  </tr>
+                </thead>
+                <tbody
+                  className="v2-file-records"
+                  ref={objectRecords}
+                  tabIndex={0}
+                >
+                  {visible
+                    .slice(currentPage * pageSize, (currentPage + 1) * pageSize)
+                    .map((object, index) => {
+                      const name = object.name || "";
+                      const label = name.slice(prefix.length) || name;
+                      const folder = name.endsWith("/");
+                      const audio = isAudioObject(name, object.content_type);
+                      const canPreview =
+                        !folder &&
+                        !object.is_delete_marker &&
+                        can("s3:GetObject", name);
+                      const checked = selected.includes(name);
+                      const current = checked && selected.length === 1;
+                      return (
+                        <tr
+                          key={name + object.version_id + index}
+                          role="row"
+                          aria-selected={checked}
+                        >
+                          <td role="cell">
+                            <input
+                              type="checkbox"
+                              aria-label={"选择 " + name}
+                              checked={checked}
+                              onChange={(event) =>
+                                setSelected((previous) =>
+                                  event.target.checked
+                                    ? [...previous, name]
+                                    : previous.filter((item) => item !== name),
+                                )
+                              }
+                            />
+                          </td>
+                          <td role="cell">
+                            <button
+                              type="button"
+                              className="v2-text-button v2-file-name"
+                              title={label}
+                              disabled={!folder && !canPreview}
+                              onClick={() =>
+                                folder
+                                  ? go(bucket, name)
+                                  : choosePreview(object)
+                              }
+                            >
+                              <V2Icon
+                                name={
+                                  folder
+                                    ? "folder"
+                                    : audio
+                                      ? "objectAudio"
+                                      : "file"
                                 }
                               />
-                            </td>
-                            <td role="cell">
-                              <button
-                                type="button"
-                                className="v2-text-button v2-file-name"
-                                title={label}
-                                onClick={(event) => {
-                                  if (folder) {
-                                    go(bucket, name);
-                                    return;
+                              <span className="v2-file-label">{label}</span>
+                            </button>
+                            <small className="v2-file-secondary">
+                              {folder
+                                ? "目录"
+                                : shortDate(object.last_modified) +
+                                  " · " +
+                                  bytes(object.size)}
+                            </small>
+                          </td>
+                          <td role="cell">{shortDate(object.last_modified)}</td>
+                          <td role="cell" className="v2-number">
+                            {folder ? "—" : bytes(object.size)}
+                          </td>
+                          <td role="cell">
+                            {current && !folder && (
+                              <div className="v2-actions v2-file-desktop-actions">
+                                <button
+                                  type="button"
+                                  className="v2-text-button"
+                                  disabled={!canPreview}
+                                  onClick={() => choosePreview(object)}
+                                >
+                                  <V2Icon name="objectPlay" />
+                                  {audio ? "试听" : "预览"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="v2-text-button"
+                                  onClick={(event) =>
+                                    showDetails(object, event.currentTarget)
                                   }
-                                  setSelected([name]);
-                                  if (
-                                    window.matchMedia("(max-width: 700px)")
-                                      .matches
-                                  ) {
-                                    showDetails(object, event.currentTarget);
-                                  }
-                                }}
-                              >
-                                <V2Icon
-                                  name={
-                                    folder
-                                      ? "folder"
-                                      : audio
-                                        ? "objectAudio"
-                                        : "file"
-                                  }
-                                />
-                                <span className="v2-file-label">{label}</span>
-                              </button>
-                              <small className="v2-file-secondary">
-                                {folder
-                                  ? "目录"
-                                  : shortDate(object.last_modified) +
-                                    " · " +
-                                    bytes(object.size)}
-                              </small>
-                            </td>
-                            <td role="cell">
-                              {shortDate(object.last_modified)}
-                            </td>
-                            <td role="cell" className="v2-number">
-                              {folder ? "—" : bytes(object.size)}
-                            </td>
-                            <td role="cell">
-                              {current && !folder && (
-                                <div className="v2-actions v2-file-desktop-actions">
-                                  <button
-                                    type="button"
-                                    className="v2-text-button"
-                                    disabled={
-                                      !!object.is_delete_marker ||
-                                      !can("s3:GetObject", name)
-                                    }
-                                    onClick={() => choosePreview(object)}
-                                  >
-                                    <V2Icon name="objectPlay" />
-                                    {audio ? "试听" : "预览"}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="v2-text-button"
-                                    onClick={(event) =>
-                                      showDetails(object, event.currentTarget)
-                                    }
-                                  >
-                                    <V2Icon name="objectPanel" />
-                                    详情
-                                  </button>
-                                </div>
-                              )}
-                              <button
-                                type="button"
-                                className="v2-file-next av-button av-ghost"
-                                aria-label={
-                                  (folder ? "打开目录 " : "查看对象详情 ") +
-                                  name
+                                >
+                                  <V2Icon name="objectPanel" />
+                                  详情
+                                </button>
+                              </div>
+                            )}
+                            <button
+                              type="button"
+                              className="v2-file-next av-button av-ghost"
+                              aria-label={
+                                (folder ? "打开目录 " : "查看对象详情 ") + name
+                              }
+                              onClick={(event) => {
+                                if (folder) {
+                                  go(bucket, name);
+                                  return;
                                 }
-                                onClick={(event) => {
-                                  if (folder) {
-                                    go(bucket, name);
-                                    return;
-                                  }
-                                  setSelected([name]);
-                                  showDetails(object, event.currentTarget);
-                                }}
+                                setSelected([name]);
+                                showDetails(object, event.currentTarget);
+                              }}
+                            >
+                              <V2Icon name="next" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  {!visible.length && (
+                    <tr className="v2-file-empty">
+                      <td colSpan={5}>
+                        <State
+                          title={
+                            loading
+                              ? "正在读取对象"
+                              : filter
+                                ? "没有找到匹配的对象"
+                                : prefix
+                                  ? "此路径暂无对象"
+                                  : "此存储桶还没有对象"
+                          }
+                          action={
+                            !loading && filter ? (
+                              <button
+                                className="av-button"
+                                onClick={() => setFilter("")}
                               >
-                                <V2Icon name="next" />
+                                清除筛选
                               </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
-              </div>
-              {!visible.length && (
-                <State
-                  title={
-                    loading
-                      ? "正在读取对象"
-                      : filter
-                        ? "没有找到匹配的对象"
-                        : prefix
-                          ? "此路径暂无对象"
-                          : "此存储桶还没有对象"
-                  }
-                  action={
-                    !loading && filter ? (
-                      <button
-                        className="av-button"
-                        onClick={() => setFilter("")}
-                      >
-                        清除筛选
-                      </button>
-                    ) : !loading && can("s3:PutObject") ? (
-                      <button
-                        className="av-button"
-                        onClick={() => open("upload")}
-                      >
-                        上传文件
-                      </button>
-                    ) : undefined
-                  }
-                >
-                  {loading
-                    ? "保留当前路径与表头，等待请求完成。"
-                    : filter
-                      ? "调整关键词，或清除筛选查看全部对象。"
-                      : "上传文件或创建路径，开始整理对象。"}
-                </State>
-              )}
+                            ) : !loading && can("s3:PutObject") ? (
+                              <button
+                                className="av-button"
+                                onClick={() => open("upload")}
+                              >
+                                上传文件
+                              </button>
+                            ) : undefined
+                          }
+                        >
+                          {loading
+                            ? "保留当前路径与表头，等待请求完成。"
+                            : filter
+                              ? "调整关键词，或清除筛选查看全部对象。"
+                              : "上传文件或创建路径，开始整理对象。"}
+                        </State>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
               <div className="v2-table-caption">
-                <div className="v2-actions">
-                  <span>
-                    {selected.length
-                      ? "已选 " +
-                        selected.length +
-                        " 项 · " +
-                        bytes(selectedSize)
-                      : visible.length +
-                        " 个对象" +
-                        (loading ? " · 正在加载…" : "")}
+                <div className="v2-actions v2-file-statistics">
+                  <span className="v2-file-totals">
+                    {records.length} 个对象 · {bytes(objectBytes)}
                   </span>
+                  {selected.length ? (
+                    <span className="v2-file-selection">
+                      已选 {selected.length} 项 · {bytes(selectedSize)}
+                    </span>
+                  ) : (
+                    <span className="v2-file-filter-count">
+                      {visible.length} 个对象{loading && " · 正在加载…"}
+                    </span>
+                  )}
                   {selected.length > 0 && (
                     <WorkspacePopover
                       className="av-button av-ghost v2-file-batch"
@@ -945,8 +953,8 @@ export default function BrowserWorkspace() {
                   <button
                     type="button"
                     className="av-button v2-file-page-button"
-                    disabled={page === 0}
-                    onClick={() => setPage((p) => p - 1)}
+                    disabled={currentPage === 0}
+                    onClick={() => setPage(currentPage - 1)}
                   >
                     上一页
                   </button>
@@ -954,30 +962,22 @@ export default function BrowserWorkspace() {
                     <select
                       className="av-field"
                       aria-label="跳转页码"
-                      value={page}
+                      value={currentPage}
                       onChange={(e) => setPage(Number(e.target.value))}
                     >
-                      {Array.from(
-                        {
-                          length: Math.max(
-                            1,
-                            Math.ceil(visible.length / pageSize),
-                          ),
-                        },
-                        (_, i) => (
-                          <option key={i} value={i}>
-                            {i + 1}
-                          </option>
-                        ),
-                      )}
+                      {Array.from({ length: pageCount }, (_, i) => (
+                        <option key={i} value={i}>
+                          {i + 1}
+                        </option>
+                      ))}
                     </select>{" "}
-                    / {Math.max(1, Math.ceil(visible.length / pageSize))}
+                    / {pageCount}
                   </label>
                   <button
                     type="button"
                     className="av-button v2-file-page-button"
-                    disabled={(page + 1) * pageSize >= visible.length}
-                    onClick={() => setPage((p) => p + 1)}
+                    disabled={currentPage + 1 >= pageCount}
+                    onClick={() => setPage(currentPage + 1)}
                   >
                     下一页
                   </button>

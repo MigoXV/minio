@@ -9,6 +9,7 @@ import { resetForm } from "./loginSlice";
 import { loginStrategyType } from "./login.types";
 import StrategyForm from "./StrategyForm";
 import AppearanceMenu from "custom/Appearance";
+import ProjectBrand from "custom/ProjectBrand";
 import "custom/login.css";
 
 export const getTargetPath = () => {
@@ -36,7 +37,7 @@ export default function Login() {
   return (
     <main className="av-login" aria-label="登录控制台">
       <header className="av-login-header">
-        <div className="v2-brand">MinIO</div>
+        <ProjectBrand />
         <AppearanceMenu compact />
       </header>
       <div className="av-login-center">

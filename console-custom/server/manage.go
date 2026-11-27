@@ -84,6 +84,68 @@ func managementOriginOK(r *http.Request) bool {
 	return err == nil && u.Host == r.Host && (u.Scheme == "https" || u.Scheme == "http")
 }
 
+type overviewDriveCapacity struct {
+	TotalBytes     uint64 `json:"totalBytes"`
+	UsedBytes      uint64 `json:"usedBytes"`
+	AvailableBytes uint64 `json:"availableBytes"`
+}
+
+type overviewDrive struct {
+	Path     string                 `json:"path"`
+	State    string                 `json:"state"`
+	Capacity *overviewDriveCapacity `json:"capacity"`
+}
+
+type overviewNode struct {
+	Endpoint string          `json:"endpoint"`
+	Drives   []overviewDrive `json:"drives"`
+}
+
+func overviewStorageNodes(servers []madmin.ServerProperties) []overviewNode {
+	nodes := make([]overviewNode, 0, len(servers))
+	for _, server := range servers {
+		if server.Endpoint == "" && len(server.Disks) == 0 {
+			continue
+		}
+		node := overviewNode{
+			Endpoint: server.Endpoint,
+			Drives:   make([]overviewDrive, 0, len(server.Disks)),
+		}
+		for _, disk := range server.Disks {
+			drive := overviewDrive{Path: disk.DrivePath, State: "unknown"}
+			if drive.Path == "" {
+				drive.Path = disk.Endpoint
+				if strings.Contains(disk.Endpoint, "://") {
+					drive.Path = ""
+					if endpoint, err := url.Parse(disk.Endpoint); err == nil {
+						drive.Path = endpoint.Path
+					}
+				}
+			}
+			switch disk.State {
+			case madmin.DriveStateOk:
+				drive.State = "online"
+				if disk.TotalSpace > 0 && disk.UsedSpace <= disk.TotalSpace && disk.AvailableSpace == disk.TotalSpace-disk.UsedSpace {
+					drive.Capacity = &overviewDriveCapacity{
+						TotalBytes:     disk.TotalSpace,
+						UsedBytes:      disk.UsedSpace,
+						AvailableBytes: disk.AvailableSpace,
+					}
+				}
+			case madmin.DriveStateOffline, madmin.DriveStateMissing:
+				drive.State = "offline"
+			case madmin.DriveStateCorrupt, madmin.DriveStatePermission, madmin.DriveStateFaulty, madmin.DriveStateRootMount, madmin.DriveStateUnformatted:
+				drive.State = "abnormal"
+			}
+			node.Drives = append(node.Drives, drive)
+		}
+		sort.SliceStable(node.Drives, func(i, j int) bool { return node.Drives[i].Path < node.Drives[j].Path })
+		nodes = append(nodes, node)
+	}
+	sort.SliceStable(nodes, func(i, j int) bool { return nodes[i].Endpoint < nodes[j].Endpoint })
+	return nodes
+}
+
 func newManagementHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/api/v1/manage/") {
@@ -124,7 +186,10 @@ func newManagementHandler(next http.Handler) http.Handler {
 					managementError(w, err)
 					return
 				}
-				managementJSON(w, 200, map[string]interface{}{"mode": info.Mode, "region": info.Region, "servers": len(info.Servers), "domain": info.Domain})
+				managementJSON(w, 200, map[string]interface{}{
+					"mode": info.Mode, "region": info.Region, "servers": len(info.Servers), "domain": info.Domain,
+					"storageNodes": overviewStorageNodes(info.Servers),
+				})
 				return
 			}
 		case "users":

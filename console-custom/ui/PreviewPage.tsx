@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import React, { useEffect, useRef, useState } from "react";
+import React, { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { BucketObject } from "../api/consoleApi";
 import PreviewAudio from "../screens/Console/Buckets/ListBuckets/Objects/Preview/PreviewAudio";
 import { PageHeader, State, V2Icon, bytes } from "./V2";
 import { objectURL } from "./BrowserWorkspace";
 import { isAudioObject } from "./objectListing";
+import { knownBinary } from "./textPreview";
 import videoPlayIcon from "./assets/v2/v2-video-play.svg";
 pdfjs.GlobalWorkerOptions.workerSrc = "/scripts/pdf.worker.min.mjs";
+const TextPreview = lazy(() => import("./TextPreview"));
 export default function PreviewPage({
   bucket,
   object,
@@ -225,7 +227,7 @@ export default function PreviewPage({
                 <span>播放能力取决于浏览器的编解码支持。</span>
               </div>
             </>
-          ) : (
+          ) : knownBinary(name, type) ? (
             <div className="v2-unsupported">
               <h2>此文件暂不支持在线预览</h2>
               <p>下载文件后，使用本地应用打开。</p>
@@ -233,6 +235,17 @@ export default function PreviewPage({
                 下载文件
               </button>
             </div>
+          ) : (
+            <Suspense fallback={<p role="status">正在加载文本预览…</p>}>
+              <TextPreview
+                key={path}
+                name={name}
+                type={type}
+                path={path}
+                size={object.size}
+                download={download}
+              />
+            </Suspense>
           )}
         </>
       )}

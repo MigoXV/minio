@@ -268,11 +268,7 @@ try {
     await page.locator("#acknowledge-confirm").click();
   async function open(name) {
     await page.goto(`${base}/browser/${bucket}`, { waitUntil: "networkidle" });
-    const row = page
-      .getByRole("row")
-      .filter({ has: page.getByRole("button", { name, exact: true }) });
-    await row.getByRole("button", { name, exact: true }).click();
-    await row.getByRole("button", { name: /^(试听|预览)$/ }).click();
+    await page.getByRole("button", { name, exact: true }).click();
   }
   await open(filename);
   await expect(

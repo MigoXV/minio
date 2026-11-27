@@ -794,14 +794,48 @@
          <Grid
 --- a/web-app/public/index.html
 +++ b/web-app/public/index.html
-@@ -3,6 +3,7 @@
+@@ -3,6 +3,16 @@
    <head>
      <meta charset="utf-8" />
      <base href="/" />
++    <link
++      id="minio-favicon"
++      href="%PUBLIC_URL%/brand/favicon-vallum.svg?v=2"
++      data-vallum="%PUBLIC_URL%/brand/favicon-vallum.svg?v=2"
++      data-abyssus="%PUBLIC_URL%/brand/favicon-abyssus.svg?v=2"
++      rel="icon"
++      sizes="16x16"
++      type="image/svg+xml"
++    />
 +    <script src="%PUBLIC_URL%/appearance-init.js"></script>
      <meta content="width=device-width, initial-scale=1" name="viewport" />
      <meta
        content="#081C42"
+@@ -25,24 +35,6 @@
+       href="%PUBLIC_URL%/apple-icon-180x180.png"
+       rel="apple-touch-icon"
+       sizes="180x180"
+-    />
+-    <link
+-      href="%PUBLIC_URL%/favicon-32x32.png"
+-      rel="icon"
+-      sizes="32x32"
+-      type="image/png"
+-    />
+-    <link
+-      href="%PUBLIC_URL%/favicon-96x96.png"
+-      rel="icon"
+-      sizes="96x96"
+-      type="image/png"
+-    />
+-    <link
+-      href="%PUBLIC_URL%/favicon-16x16.png"
+-      rel="icon"
+-      sizes="16x16"
+-      type="image/png"
+     />
+     <link href="%PUBLIC_URL%/manifest.json" rel="manifest" />
+     <link
 --- a/web-app/src/screens/Console/License/License.tsx
 +++ b/web-app/src/screens/Console/License/License.tsx
 @@ -32,7 +32,7 @@
