@@ -196,6 +196,210 @@ const setTheme = async (theme) => {
   await page.keyboard.press("Escape");
   await expect(page.locator(".v2-appearance-page")).toHaveCount(0);
 };
+const checkStorageOverview = async () => {
+  const storage = page.getByRole("region", { name: "磁盘容量" });
+  await goto("/manage/overview");
+  const overview = await api("/overview");
+  assert.equal(overview.storageNodes.length, 1);
+  const [drive] = overview.storageNodes[0].drives;
+  const percent = (drive.capacity.usedBytes / drive.capacity.totalBytes) * 100;
+  for (const theme of ["vallum", "abyssus"]) {
+    await setTheme(theme);
+    for (const viewport of [
+      desktopViewport,
+      compactViewport,
+      { width: 2048, height: 1006 },
+      { width: 390, height: 844 },
+      { width: 320, height: 600 },
+    ]) {
+      await page.setViewportSize(viewport);
+      const row = storage.getByRole("listitem");
+      await expect(row.getByText(drive.path, { exact: true })).toBeVisible();
+      await expect(row.getByRole("heading")).toHaveAttribute(
+        "title",
+        drive.path,
+      );
+      await expect(row).toHaveCSS(
+        "width",
+        viewport.width === 320 ? "288px" : "332px",
+      );
+      await expect(row).toHaveCSS("height", "132px");
+      await expect(row.locator(".v2-drive-ring-value")).toHaveText(
+        percent.toFixed(1) + "%",
+      );
+      const ring = row.locator(".v2-drive-ring svg");
+      await expect(ring).toHaveCSS("width", "72px");
+      await expect(ring).toHaveCSS("height", "72px");
+      await expect(storage.locator("time")).toBeVisible();
+      assert.equal(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+        viewport.width,
+      );
+      assert.equal(
+        await storage.evaluate((node) => node.scrollWidth - node.clientWidth),
+        0,
+      );
+      if (viewport.width <= 700) await row.scrollIntoViewIfNeeded();
+      await expect(row).toBeInViewport({ ratio: 0.98 });
+      await shot(
+        `drive-capacity-${theme}-${viewport.width}x${viewport.height}`,
+      );
+    }
+    await page.setViewportSize(desktopViewport);
+  }
+
+  const gib = 1024 ** 3;
+  const online = (path, used) => ({
+    path,
+    state: "online",
+    capacity: {
+      totalBytes: 100 * gib,
+      usedBytes: used * gib,
+      availableBytes: (100 - used) * gib,
+    },
+  });
+  const unavailable = (path, state) => ({ path, state, capacity: null });
+  const storageNodes = [
+    {
+      endpoint: "node-1:9000",
+      drives: [
+        online("/empty", 0),
+        online("/below", 79),
+        online("/warning", 80),
+        online("/critical", 90),
+      ],
+    },
+    {
+      endpoint: "node-2:9000",
+      drives: [
+        online("/full", 100),
+        unavailable("/offline", "offline"),
+        unavailable("/faulty", "abnormal"),
+        unavailable("/unknown", "unknown"),
+      ],
+    },
+  ];
+  const route = "**/api/v1/manage/overview";
+  let status = 200;
+  let responseNodes = storageNodes;
+  await page.route(route, (request) =>
+    request.fulfill({
+      status,
+      json:
+        status === 200
+          ? {
+              ...overview,
+              servers: responseNodes.length,
+              storageNodes: responseNodes,
+            }
+          : { error: "测试请求失败" },
+    }),
+  );
+  try {
+    await goto("/manage/overview");
+    await expect(
+      storage.getByText("5 在线 · 1 离线 · 1 异常 · 1 未知"),
+    ).toBeVisible();
+    await expect(storage.getByText("node-2:9000 · /full")).toBeVisible();
+    await expect(storage.getByText("100.0% · 可用 0.0 B")).toBeVisible();
+    const nodes = storage.locator("details");
+    await expect(nodes).toHaveCount(2);
+    await expect(nodes.first()).toHaveJSProperty("open", false);
+    await nodes.first().locator("summary").press("Enter");
+    await nodes.last().locator("summary").click();
+    const row = (path) =>
+      storage.getByRole("listitem").filter({
+        has: page.getByText(path, { exact: true }),
+      });
+    await expect(row("/empty").getByText("0.0 B")).toBeVisible();
+    for (const [path, percent] of [
+      ["/empty", 0],
+      ["/below", 79],
+      ["/full", 100],
+    ]) {
+      await expect(row(path).locator(".v2-drive-ring-value")).toHaveText(
+        percent.toFixed(1) + "%",
+      );
+      await expect(row(path).locator(".v2-drive-ring-used")).toHaveAttribute(
+        "stroke-dasharray",
+        `${percent} 100`,
+      );
+    }
+    await expect(row("/warning").getByText("余量偏低")).toBeVisible();
+    await expect(row("/critical").getByText("接近满盘")).toBeVisible();
+    await expect(
+      row("/offline").getByText("离线", { exact: true }),
+    ).toBeVisible();
+    await expect(row("/offline").getByText("—", { exact: true })).toHaveCount(
+      4,
+    );
+    await expect(row("/offline").locator(".v2-drive-ring-used")).toHaveCount(0);
+    await expect(
+      row("/faulty").getByText("异常", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      row("/unknown").getByText("未知", { exact: true }),
+    ).toBeVisible();
+    const cardRows = () =>
+      nodes
+        .first()
+        .getByRole("listitem")
+        .evaluateAll(
+          (cards) =>
+            new Set(cards.map((card) => card.getBoundingClientRect().top)).size,
+        );
+    assert.equal(await cardRows(), 1);
+    await page.setViewportSize(compactViewport);
+    assert.equal(await cardRows(), 2);
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+      1280,
+    );
+    await page.setViewportSize(desktopViewport);
+    await shot("drive-capacity-multi-node");
+
+    const timestamp = await storage.locator("time").getAttribute("datetime");
+    status = 503;
+    await button("刷新").click();
+    await expect(
+      storage.getByText("刷新失败，当前显示上次取得的数据。"),
+    ).toBeVisible();
+    await expect(nodes.first()).toHaveJSProperty("open", true);
+    await expect(storage.locator("time")).toHaveAttribute(
+      "datetime",
+      timestamp,
+    );
+
+    status = 200;
+    responseNodes = [];
+    await button("刷新").click();
+    await expect(storage.getByText("暂无驱动器数据。")).toBeVisible();
+    await expect(storage.locator("time")).not.toHaveAttribute(
+      "datetime",
+      timestamp,
+    );
+    await expect(
+      storage.getByText("刷新失败，当前显示上次取得的数据。"),
+    ).toHaveCount(0);
+
+    for (const [failure, text] of [
+      [401, "登录已过期，请重新登录。"],
+      [403, "没有访问权限"],
+    ]) {
+      status = 200;
+      responseNodes = storageNodes;
+      await button("刷新").click();
+      await expect(storage.getByText("node-2:9000 · /full")).toBeVisible();
+      status = failure;
+      await button("刷新").click();
+      await expect(storage).toHaveCount(0);
+      await expect(page.getByText(text, { exact: true })).toBeVisible();
+    }
+  } finally {
+    await page.unroute(route);
+  }
+  pass("双主题磁盘明细、窄屏、多节点、阈值、离线及刷新权限状态");
+};
 const openDetails = async (name) => {
   await row(name).getByRole("checkbox").check();
   await button("详情", row(name)).click();
@@ -387,6 +591,8 @@ try {
   await setTheme("abyssus");
   await page.emulateMedia({ colorScheme: null });
   pass("双主题登录、桌面和移动标志，标签页图标首屏、手动及系统切换");
+  await checkStorageOverview();
+  await goto("/browser");
   // Test the UI mutation itself, then independently verify backend state.
   const newBucket = "v2-created-" + suffix;
   await button("创建存储桶").click();
@@ -1185,9 +1391,9 @@ try {
           32,
         );
         assert.equal(
-          (await page.locator(".v2-management-flow .v2-data").boundingBox())
+          (await page.locator(".v2-overview-status-list").boundingBox())
             .height,
-          160,
+          22,
         );
       }
       if (key === "bucket-config") {
@@ -1595,6 +1801,7 @@ try {
   const systemTab = (name) =>
     systemTabs.getByRole("tab", { name, exact: true });
   const tabsBox = await systemTabs.boundingBox();
+  assert.equal(tabsBox.y, 146);
   await button("存储桶配置").click();
   await expect(page).toHaveURL(base + "/manage/buckets/" + navigationBucket);
   await expect(menuLink("存储桶")).toHaveAttribute("aria-current", "page");
@@ -1623,11 +1830,12 @@ try {
   await systemTab("系统配置").click();
   await expect(page).toHaveURL(base + "/manage/config");
   await expect(systemTab("系统配置")).toHaveAttribute("aria-selected", "true");
-  assert.deepEqual(await systemTabs.boundingBox(), tabsBox);
+  const settingsTabsBox = await systemTabs.boundingBox();
+  assert.deepEqual(settingsTabsBox, { ...tabsBox, y: 176 });
   await systemTab("许可证").click();
   await expect(page).toHaveURL(base + "/license");
   await expect(systemTab("许可证")).toHaveAttribute("aria-selected", "true");
-  assert.deepEqual(await systemTabs.boundingBox(), tabsBox);
+  assert.deepEqual(await systemTabs.boundingBox(), settingsTabsBox);
   await expect(menuLink("系统管理")).toHaveAttribute("aria-current", "page");
   await page.goBack();
   await expect(systemTab("系统配置")).toHaveAttribute("aria-selected", "true");

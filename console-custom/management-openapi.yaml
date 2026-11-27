@@ -23,6 +23,42 @@ components:
       required: [error]
       properties:
         error: { type: string }
+    Overview:
+      type: object
+      required: [mode, region, servers, domain, storageNodes]
+      properties:
+        mode: { type: string }
+        region: { type: string }
+        servers: { type: integer, minimum: 0 }
+        domain:
+          type: array
+          nullable: true
+          items: { type: string }
+        storageNodes:
+          type: array
+          items:
+            type: object
+            required: [endpoint, drives]
+            properties:
+              endpoint: { type: string }
+              drives:
+                type: array
+                items: { $ref: '#/components/schemas/OverviewDrive' }
+    OverviewDrive:
+      type: object
+      required: [path, state, capacity]
+      properties:
+        path: { type: string }
+        state: { type: string, enum: [online, offline, abnormal, unknown] }
+        capacity:
+          type: object
+          nullable: true
+          description: Filesystem capacity reported for the data path, or null when unavailable.
+          required: [totalBytes, usedBytes, availableBytes]
+          properties:
+            totalBytes: { type: integer, format: int64, minimum: 1 }
+            usedBytes: { type: integer, format: int64, minimum: 0 }
+            availableBytes: { type: integer, format: int64, minimum: 0 }
     User:
       type: object
       properties:
@@ -61,9 +97,13 @@ paths:
         default: { $ref: '#/components/responses/Failed' }
   /overview:
     get:
-      summary: Restricted server mode, region and node count
+      summary: Server summary and per-drive filesystem capacity (admin:ServerInfo)
       responses:
-        '200': { description: Server summary }
+        '200':
+          description: Server summary with storage nodes and their drives
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Overview' }
         default: { $ref: '#/components/responses/Failed' }
   /users:
     get:
