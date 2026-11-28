@@ -113,7 +113,10 @@ try {
   await page
     .getByRole("button", { name: "release-check.wav", exact: true })
     .click();
-  await page.getByRole("button", { name: "试听", exact: true }).click();
+  await page
+    .locator(".v2-object-details")
+    .getByRole("button", { name: "试听", exact: true })
+    .click();
   await expect(
     page.getByRole("button", { name: "展开频谱图", exact: true }),
   ).toBeVisible({ timeout: 20000 });

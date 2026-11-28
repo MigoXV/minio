@@ -55,6 +55,10 @@ const PreviewAudio = ({
   const spectrogramPhase = useRef<Phase>("idle");
   const onLoadRef = useRef(onLoad);
   onLoadRef.current = onLoad;
+  useEffect(() => {
+    const media = audio.current;
+    return () => media?.pause();
+  }, []);
   const durationRef = useRef(0);
   const [metadataReady, setMetadataReady] = useState(false);
   const [wavePhase, setWavePhase] = useState<Phase>("idle");

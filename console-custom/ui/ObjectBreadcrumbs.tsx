@@ -354,6 +354,26 @@ function PathSegment({
       >
         {children}
       </WorkspacePopover>
+      {!bucketSegment && (
+        <svg
+          className="v2-crumb-edge v2-crumb-edge-start"
+          viewBox="0 0 8 32"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path d="M0 0L8 16L0 32" />
+        </svg>
+      )}
+      <svg
+        className="v2-crumb-edge v2-crumb-edge-end"
+        viewBox="0 0 8 32"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path d="M0 0L8 16L0 32" />
+      </svg>
     </div>
   );
 }

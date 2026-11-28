@@ -7,6 +7,7 @@ import { setHelpName } from "../../systemSlice";
 import { getFetchConfigurationAsync } from "./loginThunks";
 import { resetForm } from "./loginSlice";
 import { loginStrategyType } from "./login.types";
+import LoginCurves from "./LoginCurves";
 import StrategyForm from "./StrategyForm";
 import AppearanceMenu from "custom/Appearance";
 import ProjectBrand from "custom/ProjectBrand";
@@ -36,6 +37,7 @@ export default function Login() {
   }, [navigateTo, dispatch, navigate]);
   return (
     <main className="av-login" aria-label="登录控制台">
+      <LoginCurves />
       <header className="av-login-header">
         <ProjectBrand />
         <AppearanceMenu compact />

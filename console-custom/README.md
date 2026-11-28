@@ -4,9 +4,9 @@
 
 当前实现以 [MinIO v2 设计页](https://www.figma.com/design/GM2b1hNNlKvKUxanutF1kw?node-id=173-629) 为准。此前 14 / 20 / 64 / 85 / 104 开头的画板属于旧版，不能用来验收本次实现。
 
-登录后的桌面控制台使用 [48px 共享顶栏](https://www.figma.com/design/GM2b1hNNlKvKUxanutF1kw/MinIO?node-id=227-607)，工作区左右各留 32px。「访问管理」和「更多」可悬停展开。存储桶列表使用卡片，桶内对象、预览及配置统一归「存储桶」。概览、系统配置和许可证通过「系统管理」页内标签切换。移动端继续使用折叠导航。前端采用 40px 控件、56px 常规表格行、400px 登录表单和独立媒体预览页。对象详情侧栏为 320px；音频播放/暂停均为 88×40，时间码固定 216px。页面、弹窗和白垣/苍渊主题复用语义 Token。Inter 沿用现有字体；Noto Sans SC 与 IBM Plex Mono 随前端自托管，许可证位于 `ui/assets/fonts/`。
+登录后的桌面控制台使用 [48px 共享顶栏](https://www.figma.com/design/GM2b1hNNlKvKUxanutF1kw/MinIO?node-id=227-607)，工作区左右各留 32px。「访问管理」和「更多」可悬停展开。存储桶列表使用卡片，桶内对象、预览及配置统一归「存储桶」。概览、系统配置和许可证通过「系统管理」页内标签切换。移动端继续使用折叠导航。前端采用 40px 控件、56px 常规表格行、400px 登录表单和媒体预览窗。对象详情侧栏为 320px；音频播放/暂停均为 88×40，时间码固定 216px。页面、弹窗和白垣/苍渊主题复用语义 Token。Inter 沿用现有字体；Noto Sans SC 与 IBM Plex Mono 随前端自托管，许可证位于 `ui/assets/fonts/`。
 
-路由使用 `BrowserWorkspace.tsx`、`ManagementV2.tsx`、`PreviewPage.tsx` 与 `LicenseV2.tsx`；`V2.tsx` / `v2.css` 定义共享控件。现有认证、会话、MinIO S3/Admin 接口和服务端权限检查保持不变。列表使用原有流式 WebSocket 协议，保留子路径权限入口；创建与修改操作使用显式弹窗。未启用版本控制的对象在标签、分享请求中传递接口要求的 `version_id=null`。
+对象浏览、管理和许可证使用 `BrowserWorkspace.tsx`、`ManagementV2.tsx` 与 `LicenseV2.tsx`。对象预览使用工作区内的 `ObjectPreview.tsx`，支持按当前筛选和排序切换对象。`V2.tsx` / `v2.css` 定义共享控件。现有认证、会话、MinIO S3/Admin 接口和服务端权限检查保持不变。列表使用原有流式 WebSocket 协议，保留子路径权限入口；创建与修改操作使用显式弹窗。未启用版本控制的对象在标签、分享请求中传递接口要求的 `version_id=null`。
 
 音频复用既有 WaveSurfer / FFT 引擎，进入“音频分析”后才创建 Worker。主题选择覆盖当前页面，保留对象、播放时间、音量、倍速、选区和已完成的计算。图片显示实际内容；PDF 可逐页浏览；视频使用独立播放控制。设计稿示例名称、日期、图形及测量值由真实对象数据替代。
 

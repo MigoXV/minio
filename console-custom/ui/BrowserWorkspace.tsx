@@ -27,7 +27,7 @@ import {
   errorMessage,
 } from "./V2";
 import ObjectUpload from "./ObjectUpload";
-import PreviewPage from "./PreviewPage";
+import ObjectPreview from "./ObjectPreview";
 import ObjectBreadcrumbs from "./ObjectBreadcrumbs";
 import ObjectDetailsPanel from "./ObjectDetailsPanel";
 import WorkspacePopover from "./WorkspacePopover";
@@ -63,7 +63,8 @@ export default function BrowserWorkspace() {
     bucket = decodeURIComponent(parts[2] || ""),
     prefix = decodeURIComponent(parts.slice(3).join("/") || "");
   const query = new URLSearchParams(location.search);
-  const previewName = query.get("preview") || "";
+  const previewName = bucket ? query.get("preview") || "" : "";
+  const previewOpen = !!previewName;
   const [buckets, setBuckets] = useState<Bucket[]>([]),
     [records, setRecords] = useState<Item[]>([]),
     [loading, setLoading] = useState(true),
@@ -103,6 +104,9 @@ export default function BrowserWorkspace() {
   const objectLayout = useRef<HTMLDivElement>(null);
   const objectRecords = useRef<HTMLTableSectionElement>(null);
   const detailTrigger = useRef<HTMLButtonElement | null>(null);
+  const workspace = useRef<HTMLElement>(null);
+  const detailPreview = useRef<HTMLButtonElement>(null);
+  const previewTrigger = useRef<HTMLButtonElement | null>(null);
   const session = useSelector((s: AppState) => s.console.session);
   const can = (action: string, name = prefix) => {
     const resource = bucket ? (name ? bucket + "/" + name : bucket) : "*";
@@ -120,6 +124,11 @@ export default function BrowserWorkspace() {
       [action],
     );
   };
+  const canPreviewObject = (object: Item) =>
+    !!object.name &&
+    !object.name.endsWith("/") &&
+    !object.is_delete_marker &&
+    can("s3:GetObject", object.name);
   const refresh = useCallback(() => setRevision((x) => x + 1), []);
   const go = (b: string, p = "") => navigate(objectBrowserPath(b, p));
   const showDetails = (object: Item, trigger: HTMLButtonElement) => {
@@ -149,14 +158,53 @@ export default function BrowserWorkspace() {
       current = false;
     };
   }, [detailsState]);
-  const choosePreview = (o: Item) => {
-    setDetailsState((state) => (state === "closing" ? "closed" : state));
-    setDetail(o);
+  const setPreview = (object: Item, replace = false) => {
+    const search = new URLSearchParams(location.search);
+    search.set("preview", object.name || "");
     navigate(
-      location.pathname + "?preview=" + encodeURIComponent(o.name || ""),
+      { pathname: location.pathname, search: search.toString() },
+      {
+        replace,
+        state: {
+          ...location.state,
+          previewObject: object,
+          previewFromList: !replace || location.state?.previewFromList === true,
+        },
+      },
     );
   };
-  useEffect(() => {
+  const choosePreview = (object: Item, trigger: HTMLButtonElement) => {
+    previewTrigger.current =
+      trigger.closest("tr")?.querySelector<HTMLButtonElement>(".v2-file-name") ??
+      null;
+    setPreview(object);
+  };
+  const closePreview = () => {
+    if (location.state?.previewFromList === true) {
+      navigate(-1);
+      return;
+    }
+    const search = new URLSearchParams(location.search);
+    search.delete("preview");
+    navigate(
+      { pathname: location.pathname, search: search.toString() },
+      { replace: true },
+    );
+  };
+  useLayoutEffect(() => {
+    const list = workspace.current;
+    if (!list) return;
+    const wasPreviewing = list.inert;
+    list.inert = previewOpen;
+    if (previewOpen || !wasPreviewing) return;
+    const trigger = previewTrigger.current;
+    previewTrigger.current = null;
+    const target = trigger?.isConnected
+      ? trigger
+      : detailPreview.current ?? objectRecords.current;
+    target?.focus({ preventScroll: true });
+  }, [previewOpen]);
+  useLayoutEffect(() => {
     setFilter("");
     setSelected([]);
     setDetail(null);
@@ -185,18 +233,24 @@ export default function BrowserWorkspace() {
       alive = false;
     };
   }, [bucket, revision]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!bucket) return;
     setLoading(true);
     setError("");
     setDenied(false);
     setRecords([]);
+    const pendingRecords: Item[] = [];
     return subscribeObjectList(
       bucket,
       prefix,
       {
-        items: (items) => setRecords((previous) => previous.concat(items)),
-        done: () => setLoading(false),
+        items: (items) => {
+          for (const item of items) pendingRecords.push(item);
+        },
+        done: () => {
+          setRecords(pendingRecords);
+          setLoading(false);
+        },
         error: (message, status) => {
           if (status === 403) {
             const paths = permissionItems(
@@ -258,13 +312,6 @@ export default function BrowserWorkspace() {
       alive = false;
     };
   }, [bucket, detail?.name, detail?.version_id, revision]);
-  useEffect(() => {
-    if (previewName && detail?.name !== previewName) {
-      const found = records.find((o) => o.name === previewName);
-      if (found) setDetail(found);
-      else setDetail({ name: previewName });
-    }
-  }, [previewName, records, detail]);
   const visible = useMemo(
     () =>
       records
@@ -553,24 +600,46 @@ export default function BrowserWorkspace() {
       detail?.content_type ||
       "",
   );
+  const requestedPreview = location.state?.previewObject as Item | undefined;
+  const previewRecord = previewOpen
+    ? requestedPreview?.name === previewName
+      ? requestedPreview
+      : records.find((object) => object.name === previewName)
+    : undefined;
+  const previewObject = previewRecord ?? { name: previewName };
+  const previewIndex = previewOpen
+    ? visible.findIndex((object) => object.name === previewName)
+    : -1;
+  const adjacentPreview = (step: number) => {
+    if (previewIndex < 0) return;
+    for (let i = previewIndex + step; i >= 0 && i < visible.length; i += step) {
+      if (canPreviewObject(visible[i])) return visible[i];
+    }
+  };
+  const previous = adjacentPreview(-1);
+  const next = adjacentPreview(1);
   return (
     <>
-      {previewName && detail?.name === previewName && (
-        <PreviewPage
+      {previewOpen && (
+        <ObjectPreview
           bucket={bucket}
-          object={{ ...detail, content_type: detailType }}
-          onBack={() => navigate(location.pathname)}
-          download={() => download()}
+          object={previewObject}
+          loading={loading && !previewRecord}
+          onPrevious={previous && (() => setPreview(previous, true))}
+          onNext={next && (() => setPreview(next, true))}
+          onClose={closePreview}
+          download={() => download(previewObject)}
         />
       )}
       <main
+        ref={workspace}
         className={
           bucket
             ? "v2-page v2-browser" +
               (detailsState === "open" ? " v2-with-details" : "")
             : "v2-page v2-buckets"
         }
-        hidden={!!previewName}
+        data-list-pending={bucket && loading ? true : undefined}
       >
         {bucket ? (
           <ObjectBreadcrumbs
@@ -742,6 +811,7 @@ export default function BrowserWorkspace() {
                   className="v2-file-records"
                   ref={objectRecords}
                   tabIndex={0}
+                  aria-busy={loading}
                 >
                   {visible
                     .slice(currentPage * pageSize, (currentPage + 1) * pageSize)
@@ -750,12 +820,11 @@ export default function BrowserWorkspace() {
                       const label = name.slice(prefix.length) || name;
                       const folder = name.endsWith("/");
                       const audio = isAudioObject(name, object.content_type);
-                      const canPreview =
-                        !folder &&
-                        !object.is_delete_marker &&
-                        can("s3:GetObject", name);
+                      const canPreview = canPreviewObject(object);
                       const checked = selected.includes(name);
-                      const current = checked && selected.length === 1;
+                      const actionsActive =
+                        (checked && selected.length === 1) ||
+                        (detail?.name === name && detailsState !== "closed");
                       return (
                         <tr
                           key={name + object.version_id + index}
@@ -781,11 +850,16 @@ export default function BrowserWorkspace() {
                               type="button"
                               className="v2-text-button v2-file-name"
                               title={label}
-                              disabled={!folder && !canPreview}
-                              onClick={() =>
+                              aria-expanded={
+                                folder
+                                  ? undefined
+                                  : detailsState === "open" &&
+                                    detail?.name === name
+                              }
+                              onClick={(event) =>
                                 folder
                                   ? go(bucket, name)
-                                  : choosePreview(object)
+                                  : showDetails(object, event.currentTarget)
                               }
                             >
                               <V2Icon
@@ -812,13 +886,18 @@ export default function BrowserWorkspace() {
                             {folder ? "—" : bytes(object.size)}
                           </td>
                           <td role="cell">
-                            {current && !folder && (
-                              <div className="v2-actions v2-file-desktop-actions">
+                            {!folder && (
+                              <div
+                                className="v2-actions v2-file-desktop-actions"
+                                data-active={actionsActive || undefined}
+                              >
                                 <button
                                   type="button"
                                   className="v2-text-button"
                                   disabled={!canPreview}
-                                  onClick={() => choosePreview(object)}
+                                  onClick={(event) =>
+                                    choosePreview(object, event.currentTarget)
+                                  }
                                 >
                                   <V2Icon name="objectPlay" />
                                   {audio ? "试听" : "预览"}
@@ -856,28 +935,26 @@ export default function BrowserWorkspace() {
                         </tr>
                       );
                     })}
-                  {!visible.length && (
+                  {!loading && !visible.length && (
                     <tr className="v2-file-empty">
                       <td colSpan={5}>
                         <State
                           title={
-                            loading
-                              ? "正在读取对象"
-                              : filter
-                                ? "没有找到匹配的对象"
-                                : prefix
-                                  ? "此路径暂无对象"
-                                  : "此存储桶还没有对象"
+                            filter
+                              ? "没有找到匹配的对象"
+                              : prefix
+                                ? "此路径暂无对象"
+                                : "此存储桶还没有对象"
                           }
                           action={
-                            !loading && filter ? (
+                            filter ? (
                               <button
                                 className="av-button"
                                 onClick={() => setFilter("")}
                               >
                                 清除筛选
                               </button>
-                            ) : !loading && can("s3:PutObject") ? (
+                            ) : can("s3:PutObject") ? (
                               <button
                                 className="av-button"
                                 onClick={() => open("upload")}
@@ -887,11 +964,9 @@ export default function BrowserWorkspace() {
                             ) : undefined
                           }
                         >
-                          {loading
-                            ? "保留当前路径与表头，等待请求完成。"
-                            : filter
-                              ? "调整关键词，或清除筛选查看全部对象。"
-                              : "上传文件或创建路径，开始整理对象。"}
+                          {filter
+                            ? "调整关键词，或清除筛选查看全部对象。"
+                            : "上传文件或创建路径，开始整理对象。"}
                         </State>
                       </td>
                     </tr>
@@ -909,7 +984,7 @@ export default function BrowserWorkspace() {
                     </span>
                   ) : (
                     <span className="v2-file-filter-count">
-                      {visible.length} 个对象{loading && " · 正在加载…"}
+                      {visible.length} 个对象
                     </span>
                   )}
                   {selected.length > 0 && (
@@ -1006,9 +1081,15 @@ export default function BrowserWorkspace() {
                   </h3>
                   <div className="v2-actions v2-detail-primary-actions">
                     <button
+                      ref={detailPreview}
                       className="av-button"
-                      onClick={() => choosePreview(detail)}
-                      disabled={!can("s3:GetObject", detail.name)}
+                      onClick={(event) =>
+                        choosePreview(
+                          { ...detail, content_type: detailType },
+                          event.currentTarget,
+                        )
+                      }
+                      disabled={!canPreviewObject(detail)}
                     >
                       {isAudioObject(detail.name, detailType) ? "试听" : "预览"}
                     </button>
