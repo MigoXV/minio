@@ -1,10 +1,35 @@
 # Production MinIO image boundary
 
-This Dockerfile packages a verified, statically linked binary. The build context must contain that binary,
-the host CA bundle and timezone file, and passwd/group entries for UID 1000.
-It deliberately contains no object data, credentials, certificates or LAN
-addresses. Keep the image archive, private runtime files and object data
-outside this development checkout.
+Build the production image from the current Git commit. Run these commands from the repository root.
+
+```bash
+revision=$(git rev-parse HEAD)
+image_id_file=$(mktemp)
+git archive "$revision" | docker buildx build \
+  --file ops/minio-lan/container/Dockerfile \
+  --platform linux/amd64 --load --provenance=false --sbom=false \
+  --build-arg "MINIO_BUILD_REVISION=$revision" \
+  --build-arg "MINIO_BUILD_COMMIT_TIME=$(git show -s --format=%cI "$revision")" \
+  --iidfile "$image_id_file" -
+docker image tag "$(cat "$image_id_file")" registry.cn-hangzhou.aliyuncs.com/migo-dl/minaio:0.2.0a2-amd64
+rm "$image_id_file"
+```
+
+The Dockerfile compiles the Console and Go server using
+`registry.cn-hangzhou.aliyuncs.com/migo-dl/node:24-alpine-pnpm-builder`.
+It checks the Go 1.24.8 archive against the upstream SHA-256 and uses the Console's Yarn lockfile.
+The final `scratch` image contains the statically linked binary, the builder's public CA bundle,
+Shanghai timezone data from Go, and a UID 1000 account. Git supplies the committed source, revision and date.
+Keep private runtime files and object data outside this development checkout.
+
+Tag each release manually under `registry.cn-hangzhou.aliyuncs.com/migo-dl/minaio`.
+The `-amd64` suffix identifies the platform. The build disables BuildKit provenance and SBOM
+attachments for registry compatibility. Publishing is a separate `docker push`.
+
+Optional build arguments include `GO_DOWNLOAD_BASE` and `GOPROXY` for Go mirrors and
+`MINIO_PREVIOUS_CONSOLE_URL` for preserving earlier Console assets from a reachable instance.
+For a proxy listening on the Docker host's loopback, add `--network host --allow network.host`
+and `--build-arg HTTP_PROXY --build-arg HTTPS_PROXY --build-arg NO_PROXY` on a local Linux builder.
 
 The production container uses host networking so its two backend listeners
 remain on 127.0.0.1:19000 and 127.0.0.1:19001. The existing HTTPS gateway
@@ -27,8 +52,7 @@ If the container fails validation, stop it before starting the preserved host
 binary against the *new* production data directory. The old snapshot is not a
 rollback target after the container has accepted writes.
 
-For subsequent UI or server releases, build a new immutable image from the
-candidate binary, run it first against an isolated empty data directory and
+For subsequent UI or server releases, run the built image against an isolated empty data directory and
 synthetic credentials, and run `console-custom/test-management.mjs` plus a
 browser smoke test. Stop that test container before promotion. Then run
 `bash ops/minio-lan/container/promote-candidate.sh <verified-image>`.

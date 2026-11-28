@@ -56,6 +56,8 @@ MINIO_TEST_S3=http://127.0.0.1:19100 MINIO_TEST_CONSOLE=http://127.0.0.1:19101 M
 
 ## 可重复构建
 
+生产镜像的 Go 和前端都在 Docker 内编译，命令见[容器发布说明](../ops/minio-lan/container/README.md)。下方命令用于需要单独输出本地候选二进制的开发场景。
+
 ```bash
 MINIO_PREVIOUS_CONSOLE_URL=http://127.0.0.1:19001/ bash console-custom/build-candidate.sh
 ```
@@ -96,15 +98,15 @@ FFmpeg 仅用于在测试中将生成的 1 kHz WAV 转换为其他格式，不�
 
 ### 已运行实例的候选发布
 
+按[容器发布说明](../ops/minio-lan/container/README.md)构建并手动打 tag。
+
 ```bash
-MINIO_PREVIOUS_CONSOLE_URL=http://127.0.0.1:19001/ bash console-custom/build-candidate.sh
-# 将候选二进制打包为 ops/minio-lan/container/Dockerfile 镜像，
 # 先用独立数据目录与合成账户在 19100/19101 验证：
 node console-custom/test-management.mjs http://127.0.0.1:19100 http://127.0.0.1:19101 .local/management-test/env
 # 验证后把测试容器停掉，再执行：
-bash ops/minio-lan/container/promote-candidate.sh <VERIFIED_IMAGE_TAG>
+bash ops/minio-lan/container/promote-candidate.sh registry.cn-hangzhou.aliyuncs.com/migo-dl/minaio:0.2.0a2-amd64
 ```
 
-设置 `MINIO_PREVIOUS_CONSOLE_URL` 时会保留上一版静态资源，避免已打开的浏览器标签页在切换后找不到旧分块。`promote-candidate.sh` 先记录只读 S3 清单，只停后端容器、保留网关 PID，再用新镜像启动同一数据挂载；健康、HTTPS 与清单校验失败时自动启动旧容器。旧镜像和停机容器保留，测试实例绝不能与生产共享数据。原 `console-custom/deploy.mjs` 面向旧的主机 systemd 部署，不应用于当前容器生产服务。
+将 `MINIO_PREVIOUS_CONSOLE_URL` 设为构建容器可达的控制台地址，可保留上一版静态资源供已打开的标签页加载。`promote-candidate.sh` 先记录只读 S3 清单，只停后端容器、保留网关 PID，再用新镜像启动同一数据挂载；健康、HTTPS 与清单校验失败时自动启动旧容器。旧镜像和停机容器保留，测试实例绝不能与生产共享数据。原 `console-custom/deploy.mjs` 面向旧的主机 systemd 部署，不应用于当前容器生产服务。
 
 单元测试增加 `ui/analysisView.test.ts`，浏览器测试覆盖主题保存/系统变化、选区与双图缩放、循环、FFT 参数、1280×720 与窄屏，以及原有音频和非音频回归。

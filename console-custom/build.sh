@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-repo=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
+repo=$(cd "$(dirname "$0")/.." && pwd)
 cd "$repo"
 export MINIO_GO=${MINIO_GO:-$repo/.local/toolchains/go/bin/go}
 export GOTOOLCHAIN=local
