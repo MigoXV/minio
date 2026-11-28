@@ -32,6 +32,9 @@
 }
 .v2-crumb {
   --crumb-tip: 8px;
+  --crumb-notch: var(--crumb-tip);
+  --crumb-border: var(--border);
+  position: relative;
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -49,7 +52,7 @@
     100% 50%,
     calc(100% - var(--crumb-tip)) 100%,
     0 100%,
-    var(--crumb-tip) 50%
+    var(--crumb-notch) 50%
   );
   text-decoration: none;
   white-space: nowrap;
@@ -58,17 +61,44 @@
   margin-left: -6px;
 }
 .v2-crumb.v2-crumb-bucket {
-  position: relative;
-  z-index: 1;
-  margin-inline-end: 12px;
-  border: 1px solid var(--border-strong);
-  border-radius: 3px;
+  --crumb-notch: 0px;
+  --crumb-border: var(--border-strong);
+  padding-inline-end: var(--crumb-tip);
+  border-radius: 3px 0 0 3px;
   background: var(--bg-primary);
   font-weight: 500;
-  clip-path: none;
 }
-.v2-crumb-bucket > a {
-  padding-inline-start: 10px;
+.v2-crumb::after {
+  content: "";
+  position: absolute;
+  inset: 0 var(--crumb-tip) 0 0;
+  border-block: 1px solid var(--crumb-border);
+  pointer-events: none;
+}
+.v2-crumb-bucket::after {
+  border-left: 1px solid var(--crumb-border);
+  border-radius: inherit;
+}
+.v2-crumb-edge {
+  position: absolute;
+  top: 0;
+  width: var(--crumb-tip);
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.v2-crumb-edge-start {
+  left: 0;
+}
+.v2-crumb-edge-end {
+  right: 0;
+}
+.v2-crumb-edge path {
+  fill: none;
+  stroke: var(--crumb-border);
+  /* The segment clip keeps the inner half of the stroke. */
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
 }
 .v2-crumb-bucket .v2-crumb-toggle {
   width: 24px;
@@ -84,6 +114,9 @@
   text-overflow: ellipsis;
   color: inherit;
   text-decoration: none;
+}
+.v2-crumb-bucket > a {
+  padding-inline-start: 10px;
 }
 .v2-crumb-toggle {
   display: grid;
@@ -195,6 +228,9 @@
   line-height: 18px;
   color: var(--text-secondary);
 }
+.v2-browser[data-list-pending] :is(.v2-object-count, .v2-file-statistics) {
+  visibility: hidden;
+}
 .v2-object-toolbar-gap {
   flex: 1;
 }
@@ -257,8 +293,14 @@
   padding: 0 12px;
   border: 0;
 }
-.v2-files td {
-  border-bottom-color: color-mix(in srgb, var(--border) 55%, transparent);
+.v2-file-records > tr:not(.v2-file-empty) {
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+.v2-files tbody .v2-file-empty:hover {
+  background: transparent;
+}
+.v2-files tbody tr:not(.v2-file-empty, [aria-selected="true"]):hover {
+  background: color-mix(in srgb, var(--selected) 48%, transparent);
 }
 .v2-files td:nth-child(3),
 .v2-files td:nth-child(4) {
@@ -309,6 +351,7 @@
   min-height: 44px;
   align-items: center;
   margin-top: 0 !important;
+  border-top: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
 }
 .v2-file-totals {
   display: none;
@@ -370,9 +413,6 @@
   }
   .v2-object-list {
     overflow: clip;
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    background: var(--bg-secondary);
   }
   .v2-files {
     --v2-file-columns: 36px minmax(0, 1fr) 192px 92px 148px;
@@ -384,7 +424,7 @@
   .v2-files thead {
     overflow: hidden;
     scrollbar-width: thin;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
   }
   .v2-files tr:not(.v2-file-empty) {
     display: grid;
@@ -398,7 +438,11 @@
   }
   .v2-file-records > tr:not(.v2-file-empty) {
     height: 42px;
-    border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  }
+  .v2-file-records
+    > tr:not(:hover, :focus-within)
+    .v2-file-desktop-actions:not([data-active]) {
+    visibility: hidden;
   }
   .v2-files :is(th, td) {
     height: auto;
@@ -440,7 +484,6 @@
   .v2-object-list > .v2-table-caption {
     min-height: 49px;
     padding-inline: 12px;
-    border-top: 1px solid var(--border);
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -614,7 +657,6 @@
     grid-template-columns: 36px minmax(0, 1fr) 44px;
     min-height: 48px;
     align-items: center;
-    border-bottom: 1px solid var(--border);
   }
   .v2-files tbody td {
     height: auto;

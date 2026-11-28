@@ -269,6 +269,10 @@ try {
   async function open(name) {
     await page.goto(`${base}/browser/${bucket}`, { waitUntil: "networkidle" });
     await page.getByRole("button", { name, exact: true }).click();
+    await page
+      .locator(".v2-object-details")
+      .getByRole("button", { name: /^(预览|试听)$/ })
+      .click();
   }
   await open(filename);
   await expect(
@@ -289,10 +293,12 @@ try {
     1,
     "analysis must fetch the audio only once",
   );
-  assert.ok(
-    (await page.evaluate(() => window.__audioBlobURLs.size)) > 0,
-    "the bounded audio Blob should supply playback",
-  );
+  await expect
+    .poll(() => page.locator("audio").evaluate((e) => e.currentSrc), {
+      message: "the bounded audio Blob should supply playback",
+      timeout: 20000,
+    })
+    .toMatch(/^blob:/);
   const waveCanvas = page.getByTestId("audio-waveform");
   await expect(waveCanvas.locator("canvas").first()).toBeVisible();
   const box = await waveCanvas.boundingBox();
@@ -831,7 +837,8 @@ try {
     animations: "disabled",
     path: path.join(output, "analysis-1280x720.png"),
   });
-  const closeRect = await page.locator(".v2-back").boundingBox();
+  const closePreview = page.getByRole("button", { name: "关闭预览", exact: true });
+  const closeRect = await closePreview.boundingBox();
   assert.ok(
     closeRect.y >= 0 && closeRect.y + closeRect.height <= 720,
     "close must stay on screen",
@@ -861,12 +868,12 @@ try {
   );
   await page.setViewportSize({ width: 1440, height: 900 });
   console.log(
-    "PASS browser upload/download data path and direct preview integration",
+    "PASS browser upload/download data path and preview from object details",
   );
   console.log(
     "PASS appearance persistence, system listener, selection, synchronized zoom, loop, FFT parameters and small-screen layout",
   );
-  await page.locator(".v2-back").click();
+  await closePreview.click();
   await expect(page.getByTestId("audio-preview")).toHaveCount(0);
   assert.equal(
     await page.evaluate(() => window.__audioWorkerStats.active),
@@ -901,7 +908,7 @@ try {
   await expect(
     page.getByText("对数频率 · 0–8 kHz", { exact: true }),
   ).toBeVisible({ timeout: 20000 });
-  await page.locator(".v2-back").click();
+  await closePreview.click();
   await page.waitForFunction(() => window.__audioWorkerStats.active === 0);
   await open(filename);
   await expect(
@@ -912,7 +919,7 @@ try {
   });
   await page.getByRole("button", { name: "展开频谱图", exact: true }).click();
   await page.waitForFunction(() => window.__audioWorkerStats.messages > 0);
-  await page.locator(".v2-back").click();
+  await closePreview.click();
   await page.waitForFunction(() => window.__audioWorkerStats.active === 0);
   console.log(
     "PASS 1 kHz spectral band and cancellation during FFT on collapse/close, followed by successful retry",
