@@ -1,5 +1,11 @@
 .git
 .github
+.local
+.samaya
+ops/**/.local
+ops/minio-lan/.env*
+ops/minio-lan/*.local.*
+minio
 default.etcd
 *.gz
 *.tar.gz

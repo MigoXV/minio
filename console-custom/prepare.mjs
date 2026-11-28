@@ -9,11 +9,13 @@ const custom = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.dirname(custom);
 const go = process.env.MINIO_GO || path.join(repo, '.local/toolchains/go/bin/go');
 const version = 'v1.7.7-0.20250905210349-2017f33b26e1';
-const module = JSON.parse(execFileSync(go, ['list', '-m', '-json', 'github.com/minio/console'], { cwd: repo, encoding: 'utf8' }));
+const moduleName = 'github.com/minio/console';
+const module = JSON.parse(execFileSync(go, ['list', '-m', '-json', moduleName], { cwd: repo, encoding: 'utf8' }));
 if (module.Version !== version || module.Replace) throw new Error('Console upstream changed; rebase and verify the custom preview patch first');
+const { Dir: upstream } = JSON.parse(execFileSync(go, ['mod', 'download', '-json', moduleName], { cwd: repo, encoding: 'utf8' }));
 const workspace = path.join(repo, '.local/console-workspace');
 if (!fs.existsSync(workspace)) {
-  fs.cpSync(module.Dir, workspace, { recursive: true });
+  fs.cpSync(upstream, workspace, { recursive: true });
   const writable = directory => {
     fs.chmodSync(directory, fs.statSync(directory).mode | 0o700);
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
@@ -29,13 +31,17 @@ const objects = 'web-app/src/screens/Console/Buckets/ListBuckets/Objects';
 const designPatch = fs.readFileSync(path.join(custom, 'patches/figma-workspace.patch'), 'utf8');
 const patchTargets = [...designPatch.matchAll(/^--- a\/(.+)$/gm)].map(match => match[1]);
 for (const relative of new Set(['api/configure_console.go', 'web-app/src/screens/Console/Console.tsx', `${objects}/Preview/PreviewFileContent.tsx`, `${objects}/utils.ts`, ...patchTargets])) {
-  fs.copyFileSync(path.join(module.Dir, relative), path.join(workspace, relative));
+  fs.copyFileSync(path.join(upstream, relative), path.join(workspace, relative));
   fs.chmodSync(path.join(workspace, relative), 0o600);
 }
-execFileSync('patch', ['-p1', '--batch', '--forward'], {
-  cwd: workspace, input: fs.readFileSync(path.join(custom, 'patches/audio-preview.patch')), stdio: ['pipe', 'inherit', 'inherit'],
-});
-execFileSync('patch', ['-p1', '--batch', '--forward'], { cwd: workspace, input: designPatch, stdio: ['pipe', 'inherit', 'inherit'] });
+for (const patch of [fs.readFileSync(path.join(custom, 'patches/audio-preview.patch'), 'utf8'), designPatch]) {
+  execFileSync('git', ['apply', '--whitespace=nowarn', '-'], {
+    cwd: workspace,
+    env: { ...process.env, GIT_CEILING_DIRECTORIES: path.dirname(workspace) },
+    input: patch,
+    stdio: ['pipe', 'inherit', 'inherit'],
+  });
+}
 const configurePath = path.join(workspace, 'api/configure_console.go');
 const configure = fs.readFileSync(configurePath, 'utf8');
 const originalHandler = 'return setupGlobalMiddleware(api.Serve(setupMiddlewares))';
